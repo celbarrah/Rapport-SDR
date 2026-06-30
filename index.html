@@ -338,6 +338,7 @@
    du Google Apps Script (voir instructions fournies séparément)
    ========================================================= */
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwFjVGWsJuMtdukg_wX8Gosl56MtL98hmgL2hrIQVTq0pl1lkdmNhfFxxRgotjuG53-Q/exec";
+const WEBHOOK_URL = "https://radouane.automatespot.com/webhook/dea5ccbf-ba69-41f9-93ed-fb81e87f735a";
 
 /* Objectifs de référence */
 const TARGET_CALLS = 70;
@@ -670,6 +671,17 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+
+    // Also send the same payload to the webhook. Fired in parallel and
+    // failures here are logged but don't block the main "sent" status,
+    // since the Google Sheet save is the source of truth.
+    fetch(WEBHOOK_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).catch(err => console.error('Webhook send failed:', err));
+
     statusEl.textContent = "Rapport envoyé.";
     statusEl.className = "status success";
   } catch (e) {
