@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rapport quotidien SDR — ClientX</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-muted: #f7f7f6;
+    --text-primary: #1a1a1a;
+    --text-secondary: #5f5f5d;
+    --text-muted: #8a8a87;
+    --border: #e2e2df;
+    --accent: #1aa37a;
+    --accent-dark: #0f6e56;
+    --accent-light: #e3f5ed;
+    --danger: #d8504a;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    padding: 24px 16px;
+  }
+  .container {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  h1 {
+    font-size: 20px;
+    font-weight: 600;
+    margin: 0 0 4px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 24px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .row {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .row > div { flex: 1; }
+  label {
+    display: block;
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  select, input[type="date"], input[type="number"] {
+    width: 100%;
+    height: 40px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 15px;
+    background: var(--surface);
+    color: var(--text-primary);
+  }
+  select:focus, input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(29,158,117,0.15);
+  }
+  .grid-4 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  @media (min-width: 480px) {
+    .grid-4 { grid-template-columns: repeat(4, 1fr); }
+    #entry-grid { grid-template-columns: repeat(5, 1fr) !important; }
+  }
+  .metric {
+    background: var(--surface-muted);
+    border-radius: var(--radius);
+    padding: 14px;
+  }
+  .metric-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0 0 4px;
+  }
+  .metric-value {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0;
+  }
+  .metric-pct {
+    font-size: 12px;
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+  }
+  .metric-pct.ok { color: var(--accent-dark); }
+  button {
+    width: 100%;
+    height: 44px;
+    border-radius: var(--radius);
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:hover { background: var(--accent-dark); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary {
+    background: var(--surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+  }
+  button.secondary:hover { background: var(--surface-muted); }
+  .summary-box {
+    background: var(--surface-muted);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .summary-box pre {
+    font-family: "SF Mono", Monaco, monospace;
+    font-size: 13px;
+    white-space: pre-wrap;
+    margin: 0;
+  }
+  .status {
+    font-size: 13px;
+    margin-top: 10px;
+    text-align: center;
+  }
+  .status.success { color: var(--accent-dark); }
+  .status.error { color: var(--danger); }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    background: var(--surface-muted);
+    border-radius: var(--radius);
+    padding: 4px;
+  }
+  .tab {
+    flex: 1;
+    text-align: center;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--text-secondary);
+  }
+  .tab.active {
+    background: var(--surface);
+    color: var(--accent-dark);
+    font-weight: 600;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  .empty-state {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+  .week-summary {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .analysis-box {
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .analysis-box.green { background: #EAF3DE; color: #173404; }
+  .analysis-box.orange { background: #FAEEDA; color: #412402; }
+  .analysis-box.red { background: #FCEBEB; color: #501313; }
+  .analysis-box ul { margin: 8px 0 0; padding-left: 20px; }
+  .badge {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .badge.green { background: #C0DD97; color: #173404; }
+  .badge.orange { background: #FAC775; color: #412402; }
+  .badge.red { background: #F7C1C1; color: #501313; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+    <h1 style="margin:0;">Client<span style="color:var(--accent);">X</span> — Rapport SDR</h1>
+  </div>
+  <p class="subtitle">Saisie en fin de journée</p>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="entry">Saisir aujourd'hui</div>
+    <div class="tab" data-tab="report">Rapport</div>
+  </div>
+
+  <!-- ENTRY TAB -->
+  <div id="tab-entry">
+    <div class="card">
+      <div class="row">
+        <div>
+          <label for="sdr-name">SDR</label>
+          <select id="sdr-name">
+            <option value="">Sélectionner</option>
+            <option value="Maha">Maha</option>
+            <option value="Mohamed">Mohamed</option>
+          </select>
+        </div>
+        <div>
+          <label for="sdr-date">Date</label>
+          <input type="date" id="sdr-date">
+        </div>
+      </div>
+
+      <div class="grid-4" style="grid-template-columns: repeat(2, 1fr);" id="entry-grid">
+        <div>
+          <label for="calls">Appels passés</label>
+          <input type="number" id="calls" min="0" value="0">
+        </div>
+        <div>
+          <label for="reports">Rapports envoyés</label>
+          <input type="number" id="reports" min="0" value="0">
+        </div>
+        <div>
+          <label for="rdvs">RDV faits</label>
+          <input type="number" id="rdvs" min="0" value="0">
+        </div>
+        <div>
+          <label for="meetings">Réunions équipe</label>
+          <input type="number" id="meetings" min="0" value="0">
+        </div>
+        <div>
+          <label for="sales">Ventes signées</label>
+          <input type="number" id="sales" min="0" value="0">
+        </div>
+      </div>
+
+      <div class="grid-4" id="metrics"></div>
+
+      <div class="summary-box">
+        <pre id="summary-text"></pre>
+      </div>
+
+      <button id="submit-btn">Envoyer le rapport</button>
+      <div id="status" class="status"></div>
+    </div>
+  </div>
+
+  <!-- REPORT TAB -->
+  <div id="tab-report" style="display:none;">
+    <div class="card">
+      <div class="row">
+        <div>
+          <label for="report-scope">Vue</label>
+          <select id="report-scope">
+            <option value="global">Globale (équipe)</option>
+            <option value="Maha">Maha</option>
+            <option value="Mohamed">Mohamed</option>
+          </select>
+        </div>
+        <div>
+          <label for="report-preset">Période rapide</label>
+          <select id="report-preset">
+            <option value="7">7 derniers jours</option>
+            <option value="30">30 derniers jours</option>
+            <option value="custom">Dates personnalisées</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" id="custom-dates-row" style="display:none;">
+        <div>
+          <label for="report-start">Du</label>
+          <input type="date" id="report-start">
+        </div>
+        <div>
+          <label for="report-end">Au</label>
+          <input type="date" id="report-end">
+        </div>
+      </div>
+
+      <button class="secondary" id="refresh-report-btn" style="margin-bottom:16px;">Actualiser</button>
+
+      <div class="week-summary" id="report-summary"></div>
+      <div id="report-analysis"></div>
+
+      <div id="report-chart-wrap" style="margin-bottom:16px;">
+        <canvas id="report-chart" height="180"></canvas>
+      </div>
+
+      <div id="report-table-wrap">
+        <div class="empty-state">Chargement…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   CONFIGURATION — à remplir par Chouaib après déploiement
+   du Google Apps Script (voir instructions fournies séparément)
+   ========================================================= */
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwFjVGWsJuMtdukg_wX8Gosl56MtL98hmgL2hrIQVTq0pl1lkdmNhfFxxRgotjuG53-Q/exec";
+
+/* Objectifs de référence */
+const TARGET_CALLS = 70;
+const TARGET_REPORTS = 7;
+const TARGET_CONV_RATE = 7; // % théorique appel -> rapport, à ajuster selon données réelles
+const MIN_PER_CALL = 6.86;  // dérivé de 70 appels sur une journée de 480 min sans RDV ni rapport
+const MIN_PER_REPORT = 10;  // 4 min production + envoi, arrondi
+const MIN_PER_RDV = 60;
+const TARGET_SALES_MONTH = 14; // objectif par SDR
+const MIN_PER_MEETING = 15;
+
+/* ---------- Seuils & analyse automatique ---------- */
+function pctColor(pct) {
+  if (pct >= 95) return 'green';
+  if (pct >= 80) return 'orange';
+  return 'red';
+}
+
+function badgeHtml(pct) {
+  const color = pctColor(pct);
+  return `<span class="badge ${color}">${pct}%</span>`;
+}
+
+function buildAnalysis(totals, days, label, periodType) {
+  // Objectif d'appels cumulé ajusté sur la période, même logique que le quotidien
+  const timeUsed = (totals.reports * MIN_PER_REPORT) + (totals.rdvs * MIN_PER_RDV) + (totals.meetings * MIN_PER_MEETING);
+  const callsEquivalentLost = timeUsed / MIN_PER_CALL;
+  const targetCalls = Math.max(Math.round((TARGET_CALLS * days) - callsEquivalentLost), 0);
+  const targetReports = Math.max((TARGET_REPORTS * days) - totals.rdvs, 0);
+
+  const callsPct = targetCalls > 0 ? Math.round((totals.calls / targetCalls) * 100) : (totals.calls > 0 ? 100 : 0);
+  const reportsPct = targetReports > 0 ? Math.round((totals.reports / targetReports) * 100) : (totals.reports > 0 ? 100 : 0);
+  const convRate = totals.calls > 0 ? (totals.reports / totals.calls) * 100 : 0;
+  const convPct = Math.round((convRate / TARGET_CONV_RATE) * 100);
+
+  // Objectif ventes : 14/mois/SDR, proratisé sur la période (30 jours de référence)
+  const targetSales = Math.max((TARGET_SALES_MONTH / 30) * days, 0.1);
+  const salesPct = Math.round((totals.sales / targetSales) * 100);
+
+  const worstPct = Math.min(callsPct, reportsPct, convPct, periodType === 'month' ? salesPct : 100);
+  const color = pctColor(worstPct);
+
+  const points = [];
+  if (callsPct < 95) points.push(`Volume d'appels à ${callsPct}% de l'objectif ajusté (${totals.calls}/${targetCalls}) — augmenter la cadence d'appel.`);
+  if (reportsPct < 95) points.push(`Rapports envoyés à ${reportsPct}% de l'objectif ajusté (${totals.reports}/${targetReports}) — vérifier si c'est un problème de volume d'appels ou de taux de conversion.`);
+  if (convPct < 95) points.push(`Taux de conversion appel→rapport à ${convRate.toFixed(1)}% (réf. ${TARGET_CONV_RATE}%) — en dessous de la référence, le pitch ou le ciblage est probablement à revoir.`);
+  if (totals.rdvs === 0 && totals.calls > 0) points.push(`Aucun RDV obtenu sur la période malgré ${totals.calls} appels — signal d'alerte sur la conversion rapport→RDV.`);
+  if (periodType === 'month' && salesPct < 95) points.push(`Ventes à ${salesPct}% de l'objectif mensuel (${totals.sales}/${targetSales.toFixed(1)}, réf. ${TARGET_SALES_MONTH}/mois) — écart à clarifier sur l'étape RDV→closing.`);
+  if (points.length === 0) points.push(`Objectifs atteints sur ${label}. Maintenir la cadence et surveiller le taux de conversion en RDV et en ventes.`);
+
+  return {
+    html: `
+      <div class="analysis-box ${color}">
+        <strong>Analyse ${label}</strong>
+        <ul>${points.map(p => `<li>${p}</li>`).join('')}</ul>
+      </div>
+    `,
+    salesPct: salesPct,
+    targetSales: targetSales
+  };
+}
+
+/* ---------- Tabs ---------- */
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const target = tab.getAttribute('data-tab');
+    document.getElementById('tab-entry').style.display = target === 'entry' ? 'block' : 'none';
+    document.getElementById('tab-report').style.display = target === 'report' ? 'block' : 'none';
+    if (target === 'report') loadReport();
+  });
+});
+
+/* ---------- Report period controls ---------- */
+document.getElementById('report-preset').addEventListener('change', (e) => {
+  document.getElementById('custom-dates-row').style.display = e.target.value === 'custom' ? 'flex' : 'none';
+});
+
+function getReportRange() {
+  const preset = document.getElementById('report-preset').value;
+  const today = new Date();
+  let start, end;
+
+  if (preset === 'custom') {
+    start = document.getElementById('report-start').value;
+    end = document.getElementById('report-end').value;
+  } else {
+    end = today.toISOString().split('T')[0];
+    const startDate = new Date();
+    startDate.setDate(today.getDate() - Number(preset));
+    start = startDate.toISOString().split('T')[0];
+  }
+  return { start, end };
+}
+
+let reportChartInstance = null;
+
+async function loadReport() {
+  const wrap = document.getElementById('report-table-wrap');
+  const summaryEl = document.getElementById('report-summary');
+  const analysisEl = document.getElementById('report-analysis');
+  const scope = document.getElementById('report-scope').value;
+  const { start, end } = getReportRange();
+
+  if (SCRIPT_URL.indexOf('REMPLACER') !== -1) {
+    wrap.innerHTML = '<div class="empty-state">Backend non configuré — voir Chouaib pour brancher le Google Sheet.</div>';
+    summaryEl.innerHTML = '';
+    analysisEl.innerHTML = '';
+    return;
+  }
+
+  if (!start || !end) {
+    wrap.innerHTML = '<div class="empty-state">Sélectionne une date de début et de fin.</div>';
+    return;
+  }
+
+  wrap.innerHTML = '<div class="empty-state">Chargement…</div>';
+
+  try {
+    const params = new URLSearchParams({ action: 'range', start, end });
+    if (scope !== 'global') params.set('name', scope);
+
+    const res = await fetch(SCRIPT_URL + '?' + params.toString());
+    const data = await res.json();
+
+    if (!data || !data.rows || data.rows.length === 0) {
+      wrap.innerHTML = '<div class="empty-state">Aucune donnée sur cette période.</div>';
+      summaryEl.innerHTML = '';
+      analysisEl.innerHTML = '';
+      if (reportChartInstance) { reportChartInstance.destroy(); reportChartInstance = null; }
+      return;
+    }
+
+    const totals = data.rows.reduce((acc, r) => {
+      acc.calls += Number(r.calls) || 0;
+      acc.reports += Number(r.reports) || 0;
+      acc.rdvs += Number(r.rdvs) || 0;
+      acc.meetings += Number(r.meetings) || 0;
+      acc.sales += Number(r.sales) || 0;
+      return acc;
+    }, { calls: 0, reports: 0, rdvs: 0, meetings: 0, sales: 0 });
+
+    const uniqueDays = new Set(data.rows.map(r => r.date)).size;
+    const periodType = uniqueDays >= 25 ? 'month' : 'week';
+    const analysis = buildAnalysis(totals, uniqueDays, `du ${start} au ${end}`, periodType);
+
+    summaryEl.innerHTML = `
+      <div class="metric">
+        <p class="metric-label">Total appels</p>
+        <p class="metric-value">${totals.calls}</p>
+      </div>
+      <div class="metric">
+        <p class="metric-label">Total rapports</p>
+        <p class="metric-value">${totals.reports}</p>
+      </div>
+      <div class="metric">
+        <p class="metric-label">Total RDV</p>
+        <p class="metric-value">${totals.rdvs}</p>
+      </div>
+      <div class="metric">
+        <p class="metric-label">Total ventes</p>
+        <p class="metric-value">${totals.sales}<span style="font-size:13px;color:var(--text-secondary);"> / ${analysis.targetSales.toFixed(1)}</span></p>
+        <p class="metric-pct">${badgeHtml(analysis.salesPct)}</p>
+      </div>
+    `;
+
+    analysisEl.innerHTML = analysis.html;
+
+    // Aggregate by date for chart (sum across SDRs if global scope)
+    const byDate = {};
+    data.rows.forEach(r => {
+      if (!byDate[r.date]) byDate[r.date] = { calls: 0, reports: 0, rdvs: 0, sales: 0 };
+      byDate[r.date].calls += Number(r.calls) || 0;
+      byDate[r.date].reports += Number(r.reports) || 0;
+      byDate[r.date].rdvs += Number(r.rdvs) || 0;
+      byDate[r.date].sales += Number(r.sales) || 0;
+    });
+    const sortedDates = Object.keys(byDate).sort();
+
+    const ctx = document.getElementById('report-chart').getContext('2d');
+    if (reportChartInstance) reportChartInstance.destroy();
+    reportChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: sortedDates,
+        datasets: [
+          { label: 'Appels', data: sortedDates.map(d => byDate[d].calls), borderColor: '#1aa37a', backgroundColor: 'rgba(26,163,122,0.1)', tension: 0.3 },
+          { label: 'Rapports', data: sortedDates.map(d => byDate[d].reports), borderColor: '#5f5f5d', backgroundColor: 'rgba(95,95,93,0.1)', tension: 0.3 },
+          { label: 'RDV', data: sortedDates.map(d => byDate[d].rdvs), borderColor: '#d8504a', backgroundColor: 'rgba(216,80,74,0.1)', tension: 0.3 },
+          { label: 'Ventes', data: sortedDates.map(d => byDate[d].sales), borderColor: '#0f6e56', backgroundColor: 'rgba(15,110,86,0.1)', tension: 0.3, borderWidth: 3 }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } } },
+        scales: { y: { beginAtZero: true } }
+      }
+    });
+
+    let rowsHtml = data.rows.map(r => `
+      <tr>
+        <td>${r.date}</td>
+        <td>${r.name}</td>
+        <td>${r.calls}</td>
+        <td>${r.reports}</td>
+        <td>${r.rdvs}</td>
+        <td>${r.meetings || 0}</td>
+        <td>${r.sales}</td>
+      </tr>
+    `).join('');
+
+    wrap.innerHTML = `
+      <table>
+        <thead>
+          <tr><th>Date</th><th>SDR</th><th>Appels</th><th>Rapports</th><th>RDV</th><th>Réunions</th><th>Ventes</th></tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    `;
+  } catch (e) {
+    wrap.innerHTML = '<div class="empty-state">Erreur de chargement des données.</div>';
+  }
+}
+
+document.getElementById('refresh-report-btn').addEventListener('click', loadReport);
+document.getElementById('report-scope').addEventListener('change', loadReport);
+document.getElementById('report-preset').addEventListener('change', loadReport);
+
+/* ---------- Entry form ---------- */
+function calc() {
+  const calls = Number(document.getElementById('calls').value) || 0;
+  const reports = Number(document.getElementById('reports').value) || 0;
+  const rdvs = Number(document.getElementById('rdvs').value) || 0;
+  const meetings = Number(document.getElementById('meetings').value) || 0;
+  const sales = Number(document.getElementById('sales').value) || 0;
+  const name = document.getElementById('sdr-name').value || '—';
+  const date = document.getElementById('sdr-date').value || '—';
+
+  // Objectif d'appels dynamique : 70 max, réduit par le temps déjà consommé
+  // par les rapports (10 min), les RDV (60 min) et les réunions équipe (15 min),
+  // converti en équivalent appels au ratio MIN_PER_CALL
+  const timeUsed = (reports * MIN_PER_REPORT) + (rdvs * MIN_PER_RDV) + (meetings * MIN_PER_MEETING);
+  const callsEquivalentLost = timeUsed / MIN_PER_CALL;
+  const dynamicCallTarget = Math.max(Math.round(TARGET_CALLS - callsEquivalentLost), 0);
+
+  // Objectif de rapports ajusté : diminue avec chaque RDV pris dans la journée
+  const dynamicReportTarget = Math.max(TARGET_REPORTS - rdvs, 0);
+
+  const callsPct = dynamicCallTarget > 0 ? Math.round((calls / dynamicCallTarget) * 100) : (calls > 0 ? 100 : 0);
+  const reportsPct = dynamicReportTarget > 0 ? Math.round((reports / dynamicReportTarget) * 100) : (reports > 0 ? 100 : 0);
+  const convRate = calls > 0 ? (reports / calls) * 100 : 0;
+  const convPct = Math.round((convRate / TARGET_CONV_RATE) * 100);
+
+  document.getElementById('metrics').innerHTML = `
+    <div class="metric">
+      <p class="metric-label">Appels / objectif ajusté</p>
+      <p class="metric-value">${calls}<span style="font-size:13px;color:var(--text-secondary);"> / ${dynamicCallTarget}</span></p>
+      <p class="metric-pct">${badgeHtml(callsPct)}</p>
+    </div>
+    <div class="metric">
+      <p class="metric-label">Rapports / objectif ajusté</p>
+      <p class="metric-value">${reports}<span style="font-size:13px;color:var(--text-secondary);"> / ${dynamicReportTarget}</span></p>
+      <p class="metric-pct">${badgeHtml(reportsPct)}</p>
+    </div>
+    <div class="metric">
+      <p class="metric-label">Taux appel→rapport</p>
+      <p class="metric-value">${convRate.toFixed(1)}%<span style="font-size:13px;color:var(--text-secondary);"> / ${TARGET_CONV_RATE}%</span></p>
+      <p class="metric-pct">${badgeHtml(convPct)}</p>
+    </div>
+    <div class="metric">
+      <p class="metric-label">RDV / ventes</p>
+      <p class="metric-value">${rdvs} / ${sales}</p>
+    </div>
+  `;
+
+  document.getElementById('summary-text').textContent =
+`${name} — ${date}
+Appels: ${calls}/${dynamicCallTarget} (${callsPct}%) — objectif ajusté selon rapports, RDV et réunions du jour
+Rapports envoyés: ${reports}/${dynamicReportTarget} (${reportsPct}%)
+Taux conversion appel→rapport: ${convRate.toFixed(1)}% (réf. ${TARGET_CONV_RATE}%)
+RDV: ${rdvs}
+Réunions équipe: ${meetings}
+Ventes signées: ${sales}`;
+}
+
+['sdr-name','sdr-date','calls','reports','rdvs','meetings','sales'].forEach(id => {
+  document.getElementById(id).addEventListener('input', calc);
+});
+
+const today = new Date().toISOString().split('T')[0];
+document.getElementById('sdr-date').value = today;
+calc();
+
+/* ---------- Submit to Google Sheet ---------- */
+document.getElementById('submit-btn').addEventListener('click', async () => {
+  const statusEl = document.getElementById('status');
+  const name = document.getElementById('sdr-name').value;
+  const date = document.getElementById('sdr-date').value;
+
+  if (!name) {
+    statusEl.textContent = "Sélectionne ton nom avant d'envoyer.";
+    statusEl.className = "status error";
+    return;
+  }
+  if (SCRIPT_URL.indexOf('REMPLACER') !== -1) {
+    statusEl.textContent = "Configuration en attente — l'URL du backend n'est pas encore branchée.";
+    statusEl.className = "status error";
+    return;
+  }
+
+  const payload = {
+    name: name,
+    date: date,
+    calls: Number(document.getElementById('calls').value) || 0,
+    reports: Number(document.getElementById('reports').value) || 0,
+    rdvs: Number(document.getElementById('rdvs').value) || 0,
+    meetings: Number(document.getElementById('meetings').value) || 0,
+    sales: Number(document.getElementById('sales').value) || 0
+  };
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = "Envoi…";
+
+  try {
+    await fetch(SCRIPT_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    statusEl.textContent = "Rapport envoyé.";
+    statusEl.className = "status success";
+  } catch (e) {
+    statusEl.textContent = "Erreur d'envoi — vérifie ta connexion.";
+    statusEl.className = "status error";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Envoyer le rapport";
+  }
+});
+
+/* Initialize date pickers for custom range with sensible default */
+(function initReportDates() {
+  const today = new Date().toISOString().split('T')[0];
+  const weekAgo = new Date();
+  weekAgo.setDate(new Date().getDate() - 7);
+  document.getElementById('report-start').value = weekAgo.toISOString().split('T')[0];
+  document.getElementById('report-end').value = today;
+})();
+document.getElementById('report-start').addEventListener('change', loadReport);
+document.getElementById('report-end').addEventListener('change', loadReport);
+</script>
+
+</body>
+</html>
