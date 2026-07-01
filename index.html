@@ -337,8 +337,8 @@
    CONFIGURATION — à remplir par Chouaib après déploiement
    du Google Apps Script (voir instructions fournies séparément)
    ========================================================= */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxwFjVGWsJuMtdukg_wX8Gosl56MtL98hmgL2hrIQVTq0pl1lkdmNhfFxxRgotjuG53-Q/exec";
-const WEBHOOK_URL = "https://radouane.automatespot.com/webhook/dea5ccbf-ba69-41f9-93ed-fb81e87f735a";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx_UMsXvN3uKlf_6px9k9kduVVnvDcNXplA_pH8RGHVpn2rl8R1QInHNmRHfNnTHDVouw/exec";
+const WEBHOOK_URL = "https://radouane.automatespot.com/webhook-test/dea5ccbf-ba69-41f9-93ed-fb81e87f735a";
 
 /* Objectifs de référence */
 const TARGET_CALLS = 70;
@@ -568,6 +568,16 @@ document.getElementById('refresh-report-btn').addEventListener('click', loadRepo
 document.getElementById('report-scope').addEventListener('change', loadReport);
 document.getElementById('report-preset').addEventListener('change', loadReport);
 
+/* ---------- Shared computed state (used by submit handler) ---------- */
+let computed = {
+  callsPct: 0,
+  reportsPct: 0,
+  convRate: 0,
+  convPct: 0,
+  dynamicCallTarget: 0,
+  dynamicReportTarget: 0
+};
+
 /* ---------- Entry form ---------- */
 function calc() {
   const calls = Number(document.getElementById('calls').value) || 0;
@@ -592,6 +602,16 @@ function calc() {
   const reportsPct = dynamicReportTarget > 0 ? Math.round((reports / dynamicReportTarget) * 100) : (reports > 0 ? 100 : 0);
   const convRate = calls > 0 ? (reports / calls) * 100 : 0;
   const convPct = Math.round((convRate / TARGET_CONV_RATE) * 100);
+
+  // Store for submit handler
+  computed = {
+    callsPct,
+    reportsPct,
+    convRate: parseFloat(convRate.toFixed(1)),
+    convPct,
+    dynamicCallTarget,
+    dynamicReportTarget
+  };
 
   document.getElementById('metrics').innerHTML = `
     <div class="metric">
@@ -657,7 +677,13 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
     reports: Number(document.getElementById('reports').value) || 0,
     rdvs: Number(document.getElementById('rdvs').value) || 0,
     meetings: Number(document.getElementById('meetings').value) || 0,
-    sales: Number(document.getElementById('sales').value) || 0
+    sales: Number(document.getElementById('sales').value) || 0,
+    calls_pct: computed.callsPct,
+    calls_target: computed.dynamicCallTarget,
+    reports_pct: computed.reportsPct,
+    reports_target: computed.dynamicReportTarget,
+    conv_rate: computed.convRate,
+    conv_pct: computed.convPct
   };
 
   const btn = document.getElementById('submit-btn');
