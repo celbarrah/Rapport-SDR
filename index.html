@@ -224,7 +224,7 @@
   <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
     <h1 style="margin:0;">Client<span style="color:var(--accent);">X</span> — Rapport SDR</h1>
   </div>
-  <p class="subtitle">Saisie en fin de journée</p>
+  <p class="subtitle">Saisie 2x par jour — 12h00 et en soirée</p>
 
   <div class="tabs">
     <div class="tab active" data-tab="entry">Saisir aujourd'hui</div>
@@ -246,6 +246,16 @@
         <div>
           <label for="sdr-date">Date</label>
           <input type="date" id="sdr-date">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="sdr-moment">Moment de la saisie</label>
+          <select id="sdr-moment">
+            <option value="midi">Midi</option>
+            <option value="soir">Soir</option>
+          </select>
         </div>
       </div>
 
@@ -337,7 +347,7 @@
    CONFIGURATION — à remplir par Chouaib après déploiement
    du Google Apps Script (voir instructions fournies séparément)
    ========================================================= */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx_UMsXvN3uKlf_6px9k9kduVVnvDcNXplA_pH8RGHVpn2rl8R1QInHNmRHfNnTHDVouw/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4iz8448WdGO6GMIs8UDvrpT8ehlqZYsnCm55AQmds1ljMTw7-pgNk5Rr74x2zgZgv_Q/exec";
 const WEBHOOK_URL = "https://radouane.automatespot.com/webhook/dea5ccbf-ba69-41f9-93ed-fb81e87f735a";
 
 /* Objectifs de référence */
@@ -473,7 +483,15 @@ async function loadReport() {
       return;
     }
 
-    const totals = data.rows.reduce((acc, r) => {
+    // Avec 2 saisies/jour (midi + soir), la dernière saisie du jour pour un SDR
+    // remplace la précédente dans les totaux — on ne compte jamais les deux.
+    const latestByKey = {};
+    data.rows.forEach(r => {
+      latestByKey[`${r.date}|${r.name}`] = r;
+    });
+    const rows = Object.values(latestByKey);
+
+    const totals = rows.reduce((acc, r) => {
       acc.calls += Number(r.calls) || 0;
       acc.reports += Number(r.reports) || 0;
       acc.rdvs += Number(r.rdvs) || 0;
@@ -482,7 +500,7 @@ async function loadReport() {
       return acc;
     }, { calls: 0, reports: 0, rdvs: 0, meetings: 0, sales: 0 });
 
-    const uniqueDays = new Set(data.rows.map(r => r.date)).size;
+    const uniqueDays = new Set(rows.map(r => r.date)).size;
     const periodType = uniqueDays >= 25 ? 'month' : 'week';
     const analysis = buildAnalysis(totals, uniqueDays, `du ${start} au ${end}`, periodType);
 
@@ -510,7 +528,7 @@ async function loadReport() {
 
     // Aggregate by date for chart (sum across SDRs if global scope)
     const byDate = {};
-    data.rows.forEach(r => {
+    rows.forEach(r => {
       if (!byDate[r.date]) byDate[r.date] = { calls: 0, reports: 0, rdvs: 0, sales: 0 };
       byDate[r.date].calls += Number(r.calls) || 0;
       byDate[r.date].reports += Number(r.reports) || 0;
@@ -539,7 +557,7 @@ async function loadReport() {
       }
     });
 
-    let rowsHtml = data.rows.map(r => `
+    let rowsHtml = rows.map(r => `
       <tr>
         <td>${r.date}</td>
         <td>${r.name}</td>
@@ -569,14 +587,7 @@ document.getElementById('report-scope').addEventListener('change', loadReport);
 document.getElementById('report-preset').addEventListener('change', loadReport);
 
 /* ---------- Shared computed state (used by submit handler) ---------- */
-let computed = {
-  callsPct: 0,
-  reportsPct: 0,
-  convRate: 0,
-  convPct: 0,
-  dynamicCallTarget: 0,
-  dynamicReportTarget: 0
-};
+let computed = { callsPct: 0, reportsPct: 0, convRate: 0, convPct: 0, dynamicCallTarget: 0, dynamicReportTarget: 0 };
 
 /* ---------- Entry form ---------- */
 function calc() {
@@ -604,14 +615,7 @@ function calc() {
   const convPct = Math.round((convRate / TARGET_CONV_RATE) * 100);
 
   // Store for submit handler
-  computed = {
-    callsPct,
-    reportsPct,
-    convRate: parseFloat(convRate.toFixed(1)),
-    convPct,
-    dynamicCallTarget,
-    dynamicReportTarget
-  };
+  computed = { callsPct, reportsPct, convRate: parseFloat(convRate.toFixed(1)), convPct, dynamicCallTarget, dynamicReportTarget };
 
   document.getElementById('metrics').innerHTML = `
     <div class="metric">
@@ -651,6 +655,7 @@ Ventes signées: ${sales}`;
 
 const today = new Date().toISOString().split('T')[0];
 document.getElementById('sdr-date').value = today;
+document.getElementById('sdr-moment').value = new Date().getHours() < 14 ? 'midi' : 'soir';
 calc();
 
 /* ---------- Submit to Google Sheet ---------- */
@@ -673,17 +678,16 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
   const payload = {
     name: name,
     date: date,
+    moment: document.getElementById('sdr-moment').value,
     calls: Number(document.getElementById('calls').value) || 0,
     reports: Number(document.getElementById('reports').value) || 0,
     rdvs: Number(document.getElementById('rdvs').value) || 0,
     meetings: Number(document.getElementById('meetings').value) || 0,
     sales: Number(document.getElementById('sales').value) || 0,
-    calls_pct: computed.callsPct,
-    calls_target: computed.dynamicCallTarget,
-    reports_pct: computed.reportsPct,
-    reports_target: computed.dynamicReportTarget,
-    conv_rate: computed.convRate,
-    conv_pct: computed.convPct
+    calls_pct:   `${Number(document.getElementById('calls').value) || 0}/${computed.dynamicCallTarget} - ${computed.callsPct}%`,
+    reports_pct: `${Number(document.getElementById('reports').value) || 0}/${computed.dynamicReportTarget} - ${computed.reportsPct}%`,
+    conv_rate:   `${Number(document.getElementById('reports').value) || 0}/${Number(document.getElementById('calls').value) || 0} - ${computed.convRate}%`,
+    conv_pct:    `${computed.convRate}% / ${TARGET_CONV_RATE}% cible - ${computed.convPct}%`
   };
 
   const btn = document.getElementById('submit-btn');
@@ -698,9 +702,6 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
       body: JSON.stringify(payload)
     });
 
-    // Also send the same payload to the webhook. Fired in parallel and
-    // failures here are logged but don't block the main "sent" status,
-    // since the Google Sheet save is the source of truth.
     fetch(WEBHOOK_URL, {
       method: 'POST',
       mode: 'no-cors',
@@ -708,7 +709,9 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
       body: JSON.stringify(payload)
     }).catch(err => console.error('Webhook send failed:', err));
 
-    statusEl.textContent = "Rapport envoyé.";
+    statusEl.textContent = payload.moment === 'midi'
+      ? "Rapport de mi-journée envoyé."
+      : "Rapport du soir envoyé — il fait foi pour le total du jour.";
     statusEl.className = "status success";
   } catch (e) {
     statusEl.textContent = "Erreur d'envoi — vérifie ta connexion.";
