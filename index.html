@@ -343,21 +343,17 @@
 </div>
 
 <script>
-/* =========================================================
-   CONFIGURATION — à remplir par Chouaib après déploiement
-   du Google Apps Script (voir instructions fournies séparément)
-   ========================================================= */
 const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4iz8448WdGO6GMIs8UDvrpT8ehlqZYsnCm55AQmds1ljMTw7-pgNk5Rr74x2zgZgv_Q/exec";
 const WEBHOOK_URL = "https://radouane.automatespot.com/webhook/dea5ccbf-ba69-41f9-93ed-fb81e87f735a";
 
 /* Objectifs de référence */
-const TARGET_CALLS = 70;
+const TARGET_CALLS = 150;
 const TARGET_REPORTS = 7;
-const TARGET_CONV_RATE = 7; // % théorique appel -> rapport, à ajuster selon données réelles
-const MIN_PER_CALL = 6.86;  // dérivé de 70 appels sur une journée de 480 min sans RDV ni rapport
-const MIN_PER_REPORT = 10;  // 4 min production + envoi, arrondi
+const TARGET_CONV_RATE = 7;
+const MIN_PER_CALL = 3.2;   // 480 min / 150 appels
+const MIN_PER_REPORT = 10;
 const MIN_PER_RDV = 60;
-const TARGET_SALES_MONTH = 14; // objectif par SDR
+const TARGET_SALES_MONTH = 14;
 const MIN_PER_MEETING = 15;
 
 /* ---------- Seuils & analyse automatique ---------- */
@@ -373,7 +369,6 @@ function badgeHtml(pct) {
 }
 
 function buildAnalysis(totals, days, label, periodType) {
-  // Objectif d'appels cumulé ajusté sur la période, même logique que le quotidien
   const timeUsed = (totals.reports * MIN_PER_REPORT) + (totals.rdvs * MIN_PER_RDV) + (totals.meetings * MIN_PER_MEETING);
   const callsEquivalentLost = timeUsed / MIN_PER_CALL;
   const targetCalls = Math.max(Math.round((TARGET_CALLS * days) - callsEquivalentLost), 0);
@@ -384,7 +379,6 @@ function buildAnalysis(totals, days, label, periodType) {
   const convRate = totals.calls > 0 ? (totals.reports / totals.calls) * 100 : 0;
   const convPct = Math.round((convRate / TARGET_CONV_RATE) * 100);
 
-  // Objectif ventes : 14/mois/SDR, proratisé sur la période (30 jours de référence)
   const targetSales = Math.max((TARGET_SALES_MONTH / 30) * days, 0.1);
   const salesPct = Math.round((totals.sales / targetSales) * 100);
 
@@ -423,7 +417,6 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
-/* ---------- Report period controls ---------- */
 document.getElementById('report-preset').addEventListener('change', (e) => {
   document.getElementById('custom-dates-row').style.display = e.target.value === 'custom' ? 'flex' : 'none';
 });
@@ -432,7 +425,6 @@ function getReportRange() {
   const preset = document.getElementById('report-preset').value;
   const today = new Date();
   let start, end;
-
   if (preset === 'custom') {
     start = document.getElementById('report-start').value;
     end = document.getElementById('report-end').value;
@@ -455,12 +447,11 @@ async function loadReport() {
   const { start, end } = getReportRange();
 
   if (SCRIPT_URL.indexOf('REMPLACER') !== -1) {
-    wrap.innerHTML = '<div class="empty-state">Backend non configuré — voir Chouaib pour brancher le Google Sheet.</div>';
+    wrap.innerHTML = '<div class="empty-state">Backend non configuré.</div>';
     summaryEl.innerHTML = '';
     analysisEl.innerHTML = '';
     return;
   }
-
   if (!start || !end) {
     wrap.innerHTML = '<div class="empty-state">Sélectionne une date de début et de fin.</div>';
     return;
@@ -483,12 +474,8 @@ async function loadReport() {
       return;
     }
 
-    // Avec 2 saisies/jour (midi + soir), la dernière saisie du jour pour un SDR
-    // remplace la précédente dans les totaux — on ne compte jamais les deux.
     const latestByKey = {};
-    data.rows.forEach(r => {
-      latestByKey[`${r.date}|${r.name}`] = r;
-    });
+    data.rows.forEach(r => { latestByKey[`${r.date}|${r.name}`] = r; });
     const rows = Object.values(latestByKey);
 
     const totals = rows.reduce((acc, r) => {
@@ -526,7 +513,6 @@ async function loadReport() {
 
     analysisEl.innerHTML = analysis.html;
 
-    // Aggregate by date for chart (sum across SDRs if global scope)
     const byDate = {};
     rows.forEach(r => {
       if (!byDate[r.date]) byDate[r.date] = { calls: 0, reports: 0, rdvs: 0, sales: 0 };
@@ -586,35 +572,29 @@ document.getElementById('refresh-report-btn').addEventListener('click', loadRepo
 document.getElementById('report-scope').addEventListener('change', loadReport);
 document.getElementById('report-preset').addEventListener('change', loadReport);
 
-/* ---------- Shared computed state (used by submit handler) ---------- */
+/* ---------- Shared computed state ---------- */
 let computed = { callsPct: 0, reportsPct: 0, convRate: 0, convPct: 0, dynamicCallTarget: 0, dynamicReportTarget: 0 };
 
 /* ---------- Entry form ---------- */
 function calc() {
-  const calls = Number(document.getElementById('calls').value) || 0;
-  const reports = Number(document.getElementById('reports').value) || 0;
-  const rdvs = Number(document.getElementById('rdvs').value) || 0;
+  const calls    = Number(document.getElementById('calls').value)    || 0;
+  const reports  = Number(document.getElementById('reports').value)  || 0;
+  const rdvs     = Number(document.getElementById('rdvs').value)     || 0;
   const meetings = Number(document.getElementById('meetings').value) || 0;
-  const sales = Number(document.getElementById('sales').value) || 0;
+  const sales    = Number(document.getElementById('sales').value)    || 0;
   const name = document.getElementById('sdr-name').value || '—';
   const date = document.getElementById('sdr-date').value || '—';
 
-  // Objectif d'appels dynamique : 70 max, réduit par le temps déjà consommé
-  // par les rapports (10 min), les RDV (60 min) et les réunions équipe (15 min),
-  // converti en équivalent appels au ratio MIN_PER_CALL
   const timeUsed = (reports * MIN_PER_REPORT) + (rdvs * MIN_PER_RDV) + (meetings * MIN_PER_MEETING);
   const callsEquivalentLost = timeUsed / MIN_PER_CALL;
   const dynamicCallTarget = Math.max(Math.round(TARGET_CALLS - callsEquivalentLost), 0);
-
-  // Objectif de rapports ajusté : diminue avec chaque RDV pris dans la journée
   const dynamicReportTarget = Math.max(TARGET_REPORTS - rdvs, 0);
 
-  const callsPct = dynamicCallTarget > 0 ? Math.round((calls / dynamicCallTarget) * 100) : (calls > 0 ? 100 : 0);
+  const callsPct   = dynamicCallTarget   > 0 ? Math.round((calls   / dynamicCallTarget)   * 100) : (calls   > 0 ? 100 : 0);
   const reportsPct = dynamicReportTarget > 0 ? Math.round((reports / dynamicReportTarget) * 100) : (reports > 0 ? 100 : 0);
-  const convRate = calls > 0 ? (reports / calls) * 100 : 0;
-  const convPct = Math.round((convRate / TARGET_CONV_RATE) * 100);
+  const convRate   = calls > 0 ? (reports / calls) * 100 : 0;
+  const convPct    = Math.round((convRate / TARGET_CONV_RATE) * 100);
 
-  // Store for submit handler
   computed = { callsPct, reportsPct, convRate: parseFloat(convRate.toFixed(1)), convPct, dynamicCallTarget, dynamicReportTarget };
 
   document.getElementById('metrics').innerHTML = `
@@ -658,7 +638,7 @@ document.getElementById('sdr-date').value = today;
 document.getElementById('sdr-moment').value = new Date().getHours() < 14 ? 'midi' : 'soir';
 calc();
 
-/* ---------- Submit to Google Sheet ---------- */
+/* ---------- Submit ---------- */
 document.getElementById('submit-btn').addEventListener('click', async () => {
   const statusEl = document.getElementById('status');
   const name = document.getElementById('sdr-name').value;
@@ -669,21 +649,16 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
     statusEl.className = "status error";
     return;
   }
-  if (SCRIPT_URL.indexOf('REMPLACER') !== -1) {
-    statusEl.textContent = "Configuration en attente — l'URL du backend n'est pas encore branchée.";
-    statusEl.className = "status error";
-    return;
-  }
 
   const payload = {
-    name: name,
-    date: date,
-    moment: document.getElementById('sdr-moment').value,
-    calls: Number(document.getElementById('calls').value) || 0,
-    reports: Number(document.getElementById('reports').value) || 0,
-    rdvs: Number(document.getElementById('rdvs').value) || 0,
+    name,
+    date,
+    moment:   document.getElementById('sdr-moment').value,
+    calls:    Number(document.getElementById('calls').value)    || 0,
+    reports:  Number(document.getElementById('reports').value)  || 0,
+    rdvs:     Number(document.getElementById('rdvs').value)     || 0,
     meetings: Number(document.getElementById('meetings').value) || 0,
-    sales: Number(document.getElementById('sales').value) || 0,
+    sales:    Number(document.getElementById('sales').value)    || 0,
     calls_pct:   `${Number(document.getElementById('calls').value) || 0}/${computed.dynamicCallTarget} - ${computed.callsPct}%`,
     reports_pct: `${Number(document.getElementById('reports').value) || 0}/${computed.dynamicReportTarget} - ${computed.reportsPct}%`,
     conv_rate:   `${Number(document.getElementById('reports').value) || 0}/${Number(document.getElementById('calls').value) || 0} - ${computed.convRate}%`,
@@ -722,7 +697,6 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
   }
 });
 
-/* Initialize date pickers for custom range with sensible default */
 (function initReportDates() {
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date();
