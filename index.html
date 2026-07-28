@@ -85,7 +85,7 @@
   }
   @media (min-width: 480px) {
     .grid-4 { grid-template-columns: repeat(4, 1fr); }
-    #entry-grid { grid-template-columns: repeat(5, 1fr) !important; }
+    #entry-grid { grid-template-columns: repeat(3, 1fr) !important; }
   }
   .metric {
     background: var(--surface-muted);
@@ -222,9 +222,9 @@
 
 <div class="container">
   <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
-    <h1 style="margin:0;">Client<span style="color:var(--accent);">X</span> — Rapport SDR</h1>
+    <h1 style="margin:0;">Client<span style="color:var(--accent);">X</span> — Rapport Ventes</h1>
   </div>
-  <p class="subtitle">Saisie 2x par jour — 12h00 et en soirée</p>
+  <p class="subtitle">Saisie 2x par jour — Midi et Soir</p>
 
   <div class="tabs">
     <div class="tab active" data-tab="entry">Saisir aujourd'hui</div>
@@ -236,16 +236,38 @@
     <div class="card">
       <div class="row">
         <div>
-          <label for="sdr-name">SDR</label>
+          <label for="entry-role">Rôle</label>
+          <select id="entry-role">
+            <option value="sdr">SDR</option>
+            <option value="closer">Closer</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="sdr-name" id="entry-name-label">SDR</label>
           <select id="sdr-name">
             <option value="">Sélectionner</option>
-            <option value="Maha">Maha</option>
-            <option value="Mohamed">Mohamed</option>
           </select>
         </div>
         <div>
           <label for="sdr-date">Date</label>
           <input type="date" id="sdr-date">
+        </div>
+      </div>
+
+      <div style="margin: -8px 0 16px;">
+        <span id="sdr-manager-toggle" style="font-size:12px;color:var(--accent-dark);cursor:pointer;text-decoration:underline;">Gérer la liste</span>
+        <div id="sdr-manager-panel" style="display:none;margin-top:10px;">
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <input type="text" id="sdr-add-input" placeholder="Nom" style="flex:1;height:36px;padding:0 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;">
+            <input type="date" id="sdr-add-startdate" style="height:36px;padding:0 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;">
+            <button class="secondary" id="sdr-add-btn" style="width:auto;height:36px;padding:0 14px;">Ajouter</button>
+          </div>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">Renseigne la date de démarrage pour que les objectifs du mois soient calculés au prorata (ex : quelqu'un qui commence le 15 n'a pas le même objectif que quelqu'un présent tout le mois).</p>
+          <div id="sdr-manager-list"></div>
+          <p style="font-size:12px;color:var(--text-muted);margin:8px 0 0;">Cette liste est enregistrée sur cet appareil/navigateur. Ajoute chaque personne une fois sur chaque téléphone/ordinateur utilisé pour saisir le rapport.</p>
         </div>
       </div>
 
@@ -261,22 +283,26 @@
 
       <div class="grid-4" style="grid-template-columns: repeat(2, 1fr);" id="entry-grid">
         <div>
-          <label for="calls">Appels passés</label>
+          <label for="calls">Nombre d'appels</label>
           <input type="number" id="calls" min="0" value="0">
         </div>
         <div>
-          <label for="reports">Rapports envoyés</label>
-          <input type="number" id="reports" min="0" value="0">
+          <label for="rdvs-pris">RDV pris</label>
+          <input type="number" id="rdvs-pris" min="0" value="0">
         </div>
-        <div>
-          <label for="rdvs">RDV faits</label>
-          <input type="number" id="rdvs" min="0" value="0">
+        <div id="rdvs-faits-field">
+          <label for="rdvs-faits">RDV faits</label>
+          <input type="number" id="rdvs-faits" min="0" value="0">
+        </div>
+        <div id="rdvs-presentes-field">
+          <label for="rdvs-presentes">RDV présentés</label>
+          <input type="number" id="rdvs-presentes" min="0" value="0">
         </div>
         <div>
           <label for="meetings">Réunions équipe</label>
           <input type="number" id="meetings" min="0" value="0">
         </div>
-        <div>
+        <div id="sales-field">
           <label for="sales">Ventes signées</label>
           <input type="number" id="sales" min="0" value="0">
         </div>
@@ -287,6 +313,8 @@
       <div class="summary-box">
         <pre id="summary-text"></pre>
       </div>
+
+      <div id="month-cumul-box" style="margin-bottom:16px;"></div>
 
       <button id="submit-btn">Envoyer le rapport</button>
       <div id="status" class="status"></div>
@@ -299,17 +327,14 @@
       <div class="row">
         <div>
           <label for="report-scope">Vue</label>
-          <select id="report-scope">
-            <option value="global">Globale (équipe)</option>
-            <option value="Maha">Maha</option>
-            <option value="Mohamed">Mohamed</option>
-          </select>
+          <select id="report-scope"></select>
         </div>
         <div>
           <label for="report-preset">Période rapide</label>
           <select id="report-preset">
             <option value="7">7 derniers jours</option>
             <option value="30">30 derniers jours</option>
+            <option value="month" selected>Mois en cours (cumul)</option>
             <option value="custom">Dates personnalisées</option>
           </select>
         </div>
@@ -342,19 +367,284 @@
   </div>
 </div>
 
+<div id="pin-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:var(--surface); border-radius:12px; padding:20px; width:calc(100% - 48px); max-width:320px;">
+    <p style="margin:0 0 12px; font-size:14px; font-weight:600;">Code d'accès requis</p>
+    <input type="password" id="pin-input" inputmode="numeric" placeholder="Code" style="width:100%; height:40px; padding:0 12px; border:1px solid var(--border); border-radius:var(--radius); font-size:15px; margin-bottom:8px;">
+    <p id="pin-error" style="display:none; color:var(--danger); font-size:12px; margin:0 0 8px;">Code incorrect.</p>
+    <div style="display:flex; gap:8px;">
+      <button class="secondary" id="pin-cancel" style="flex:1;">Annuler</button>
+      <button id="pin-submit" style="flex:1;">Valider</button>
+    </div>
+  </div>
+</div>
 <script>
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx4iz8448WdGO6GMIs8UDvrpT8ehlqZYsnCm55AQmds1ljMTw7-pgNk5Rr74x2zgZgv_Q/exec";
-const WEBHOOK_URL = "https://radouane.automatespot.com/webhook/dea5ccbf-ba69-41f9-93ed-fb81e87f735a";
+/* =========================================================
+   CONFIGURATION — à remplir par Chouaib après déploiement
+   du Google Apps Script (voir instructions fournies séparément)
+   ========================================================= */
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx0hIPAyUzibS27lwk01WfqHqkS9_D9EoM4r8F0-uaRHFtDdMGDs5zH-5se_a5ZAK6UeA/exec";
 
-/* Objectifs de référence */
-const TARGET_CALLS = 150;
-const TARGET_REPORTS = 7;
-const TARGET_CONV_RATE = 7;
-const MIN_PER_CALL = 3.2;   // 480 min / 150 appels
-const MIN_PER_REPORT = 10;
-const MIN_PER_RDV = 60;
-const TARGET_SALES_MONTH = 14;
-const MIN_PER_MEETING = 15;
+/* Objectifs de référence par rôle */
+const TARGETS = {
+  sdr:    { label: 'SDR',    pluralLabel: 'SDR',     calls: 200, salesMonth: null, hasRdvFaits: false, hasRdvPresentes: true, rdvTargetField: 'presentes', rdvTargetValue: 2 },
+  closer: { label: 'Closer', pluralLabel: 'Closers',  calls: 80,  salesMonth: 14,   hasRdvFaits: true,  hasRdvPresentes: false, rdvTargetField: null,        rdvTargetValue: null }
+};
+const MIN_PER_RDV = 60;      // durée d'un RDV client (SDR comme Closer, confirmé 1h pour le Closer)
+const MIN_PER_MEETING = 15;  // réunion d'équipe interne (confirmé 15 min, SDR comme Closer)
+
+function minPerCall(role) {
+  return 480 / TARGETS[role].calls;
+}
+
+/* ---------- Gestion des listes SDR / Closer (entrants/sortants) ---------- */
+const ROLE_LISTS = {
+  sdr:    { key: 'clientx_sdr_list',    defaults: ['Maha', 'Mohamed'] },
+  closer: { key: 'clientx_closer_list', defaults: ['Hassan', 'Taha'] }
+};
+
+function getList(role) {
+  const cfg = ROLE_LISTS[role];
+  try {
+    const raw = localStorage.getItem(cfg.key);
+    if (raw) {
+      let list = JSON.parse(raw);
+      if (Array.isArray(list) && list.length) {
+        // Migration : ancien format = tableau de noms simples -> objets {name, startDate}
+        list = list.map(item => typeof item === 'string' ? { name: item, startDate: null } : item);
+        return list;
+      }
+    }
+  } catch (e) {}
+  const defaults = cfg.defaults.map(name => ({ name, startDate: null }));
+  localStorage.setItem(cfg.key, JSON.stringify(defaults));
+  return defaults;
+}
+
+function saveList(role, list) {
+  localStorage.setItem(ROLE_LISTS[role].key, JSON.stringify(list));
+}
+
+function findPerson(role, name) {
+  return getList(role).find(p => p.name === name) || null;
+}
+
+// Jours fériés français (fixes + mobiles calculés via Pâques) — utilisés pour
+// ne compter que les jours ouvrés dans les objectifs proratisés.
+function easterDate(year) {
+  // Algorithme de Gauss (calendrier grégorien)
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  return new Date(year, month - 1, day);
+}
+
+function addDays(date, n) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + n);
+  return d;
+}
+
+function toIso(date) {
+  return date.toISOString().split('T')[0];
+}
+
+const frenchHolidaysCache = {};
+function frenchHolidaysForYear(year) {
+  if (frenchHolidaysCache[year]) return frenchHolidaysCache[year];
+  const easter = easterDate(year);
+  const set = new Set([
+    `${year}-01-01`,                  // Jour de l'An
+    toIso(addDays(easter, 1)),        // Lundi de Pâques
+    `${year}-05-01`,                  // Fête du Travail
+    `${year}-05-08`,                  // Victoire 1945
+    toIso(addDays(easter, 39)),       // Ascension
+    toIso(addDays(easter, 50)),       // Lundi de Pentecôte
+    `${year}-07-14`,                  // Fête Nationale
+    `${year}-08-15`,                  // Assomption
+    `${year}-11-01`,                  // Toussaint
+    `${year}-11-11`,                  // Armistice
+    `${year}-12-25`                   // Noël
+  ]);
+  frenchHolidaysCache[year] = set;
+  return set;
+}
+
+function isFrenchHoliday(iso) {
+  const year = Number(iso.slice(0, 4));
+  return frenchHolidaysForYear(year).has(iso);
+}
+
+// Compte les jours ouvrés (hors samedi/dimanche et jours fériés français) entre 2 dates incluses
+function countWorkingDays(startStr, endStr) {
+  if (startStr > endStr) return 0;
+  let count = 0;
+  let d = new Date(startStr + 'T00:00:00');
+  const end = new Date(endStr + 'T00:00:00');
+  while (d <= end) {
+    const dow = d.getDay(); // 0 = dimanche, 6 = samedi
+    if (dow !== 0 && dow !== 6 && !isFrenchHoliday(toIso(d))) count++;
+    d = addDays(d, 1);
+  }
+  return count;
+}
+
+// Nombre de jours ouvrés, dans [periodStart, periodEnd], où la personne était déjà en poste
+function effectiveDaysForPerson(startDate, periodStart, periodEnd) {
+  let effStart = periodStart;
+  if (startDate && startDate > periodStart) effStart = startDate;
+  if (effStart > periodEnd) return 0;
+  return countWorkingDays(effStart, periodEnd);
+}
+
+function currentEntryRole() {
+  return document.getElementById('entry-role').value;
+}
+
+function renderEntryPersonOptions() {
+  const role = currentEntryRole();
+  const t = TARGETS[role];
+  const list = getList(role);
+  const nameSelect = document.getElementById('sdr-name');
+  const prevName = nameSelect.value;
+
+  document.getElementById('entry-name-label').textContent = t.label;
+  document.getElementById('sdr-manager-toggle').textContent = `Gérer la liste des ${t.pluralLabel}`;
+  document.getElementById('sales-field').style.display = t.salesMonth ? 'block' : 'none';
+  document.getElementById('rdvs-faits-field').style.display = t.hasRdvFaits ? 'block' : 'none';
+  document.getElementById('rdvs-presentes-field').style.display = t.hasRdvPresentes ? 'block' : 'none';
+
+  nameSelect.innerHTML = '<option value="">Sélectionner</option>' +
+    list.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+  if (list.some(p => p.name === prevName)) nameSelect.value = prevName;
+
+  renderManagerList(role);
+}
+
+function renderManagerList(role) {
+  const list = getList(role);
+  const wrap = document.getElementById('sdr-manager-list');
+  if (list.length === 0) {
+    wrap.innerHTML = '<span style="color:var(--text-muted);font-size:13px;">Aucun nom.</span>';
+    return;
+  }
+  wrap.innerHTML = list.map(p => `
+    <span class="badge" style="background:var(--surface-muted);color:var(--text-primary);margin:0 6px 6px 0;display:inline-flex;align-items:center;gap:6px;">
+      ${p.name}${p.startDate ? ` <span style="color:var(--text-muted);font-weight:400;">(depuis ${p.startDate})</span>` : ' <span style="color:var(--text-muted);font-weight:400;">(date non renseignée)</span>'}
+      <span data-remove="${p.name}" style="cursor:pointer;color:var(--danger);font-weight:700;">×</span>
+    </span>
+  `).join('');
+  wrap.querySelectorAll('[data-remove]').forEach(el => {
+    el.addEventListener('click', () => {
+      const name = el.getAttribute('data-remove');
+      const updated = getList(role).filter(p => p.name !== name);
+      saveList(role, updated);
+      renderEntryPersonOptions();
+      renderReportScopeOptions();
+    });
+  });
+}
+
+document.getElementById('entry-role').addEventListener('change', () => {
+  renderEntryPersonOptions();
+  calc();
+  loadMonthCumul();
+});
+
+const MANAGER_PIN = "072026";
+let managerUnlocked = false;
+
+function showPinModal() {
+  document.getElementById('pin-input').value = '';
+  document.getElementById('pin-error').style.display = 'none';
+  const modal = document.getElementById('pin-modal');
+  modal.style.display = 'flex';
+  document.getElementById('pin-input').focus();
+}
+
+function hidePinModal() {
+  document.getElementById('pin-modal').style.display = 'none';
+}
+
+document.getElementById('sdr-manager-toggle').addEventListener('click', () => {
+  const panel = document.getElementById('sdr-manager-panel');
+  if (panel.style.display === 'block') {
+    panel.style.display = 'none';
+    return;
+  }
+  if (!managerUnlocked) {
+    showPinModal();
+    return;
+  }
+  panel.style.display = 'block';
+});
+
+document.getElementById('pin-cancel').addEventListener('click', hidePinModal);
+
+document.getElementById('pin-submit').addEventListener('click', () => {
+  const code = document.getElementById('pin-input').value.trim();
+  if (code === MANAGER_PIN) {
+    managerUnlocked = true;
+    hidePinModal();
+    document.getElementById('sdr-manager-panel').style.display = 'block';
+  } else {
+    document.getElementById('pin-error').style.display = 'block';
+  }
+});
+
+document.getElementById('pin-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('pin-submit').click();
+});
+
+document.getElementById('sdr-add-btn').addEventListener('click', () => {
+  const role = currentEntryRole();
+  const input = document.getElementById('sdr-add-input');
+  const dateInput = document.getElementById('sdr-add-startdate');
+  const name = input.value.trim();
+  if (!name) return;
+  const list = getList(role);
+  if (!list.some(p => p.name === name)) {
+    list.push({ name, startDate: dateInput.value || null });
+    saveList(role, list);
+    renderEntryPersonOptions();
+    renderReportScopeOptions();
+  }
+  input.value = '';
+  dateInput.value = '';
+});
+
+/* ---------- Vue du rapport : groupée par rôle ---------- */
+function renderReportScopeOptions() {
+  const sel = document.getElementById('report-scope');
+  const prev = sel.value;
+  const sdrList = getList('sdr');
+  const closerList = getList('closer');
+  sel.innerHTML = `
+    <optgroup label="Équipe">
+      <option value="sdr:global">Équipe SDR (globale)</option>
+      <option value="closer:global">Équipe Closers (globale)</option>
+    </optgroup>
+    <optgroup label="SDR">
+      ${sdrList.map(p => `<option value="sdr:${p.name}">${p.name}</option>`).join('')}
+    </optgroup>
+    <optgroup label="Closers">
+      ${closerList.map(p => `<option value="closer:${p.name}">${p.name}</option>`).join('')}
+    </optgroup>
+  `;
+  const values = Array.from(sel.options).map(o => o.value);
+  sel.value = values.includes(prev) ? prev : 'sdr:global';
+}
 
 /* ---------- Seuils & analyse automatique ---------- */
 function pctColor(pct) {
@@ -368,35 +658,42 @@ function badgeHtml(pct) {
   return `<span class="badge ${color}">${pct}%</span>`;
 }
 
-function buildAnalysis(totals, days, label, periodType) {
-  const timeUsed = (totals.reports * MIN_PER_REPORT) + (totals.rdvs * MIN_PER_RDV) + (totals.meetings * MIN_PER_MEETING);
-  const callsEquivalentLost = timeUsed / MIN_PER_CALL;
-  const targetCalls = Math.max(Math.round((TARGET_CALLS * days) - callsEquivalentLost), 0);
-  const targetReports = Math.max((TARGET_REPORTS * days) - totals.rdvs, 0);
-
+function buildAnalysis(totals, days, label, periodType, t) {
+  const mpc = minPerCall(t.key);
+  const timeUsed = (t.hasRdvFaits ? totals.rdvsFaits * MIN_PER_RDV : 0) + (totals.meetings * MIN_PER_MEETING);
+  const callsEquivalentLost = timeUsed / mpc;
+  const targetCalls = Math.max(Math.round((t.calls * days) - callsEquivalentLost), 0);
   const callsPct = targetCalls > 0 ? Math.round((totals.calls / targetCalls) * 100) : (totals.calls > 0 ? 100 : 0);
-  const reportsPct = targetReports > 0 ? Math.round((totals.reports / targetReports) * 100) : (totals.reports > 0 ? 100 : 0);
-  const convRate = totals.calls > 0 ? (totals.reports / totals.calls) * 100 : 0;
-  const convPct = Math.round((convRate / TARGET_CONV_RATE) * 100);
 
-  const targetSales = Math.max((TARGET_SALES_MONTH / 30) * days, 0.1);
-  const salesPct = Math.round((totals.sales / targetSales) * 100);
+  let rdvPct = null, rdvLabel = null, rdvValue = null, rdvTarget = null;
+  if (t.rdvTargetField) {
+    rdvValue = t.rdvTargetField === 'pris' ? totals.rdvsPris : (t.rdvTargetField === 'faits' ? totals.rdvsFaits : totals.rdvsPresentes);
+    rdvLabel = t.rdvTargetField === 'pris' ? 'RDV pris' : (t.rdvTargetField === 'faits' ? 'RDV faits' : 'RDV présentés');
+    rdvTarget = t.rdvTargetValue * days;
+    rdvPct = rdvTarget > 0 ? Math.round((rdvValue / rdvTarget) * 100) : (rdvValue > 0 ? 100 : 0);
+  }
 
-  const worstPct = Math.min(callsPct, reportsPct, convPct, periodType === 'month' ? salesPct : 100);
+  const targetSales = t.salesMonth ? Math.max((t.salesMonth / 30) * days, 0.1) : null;
+  const salesPct = t.salesMonth ? Math.round((totals.sales / targetSales) * 100) : null;
+
+  const pctsForWorst = [callsPct];
+  if (rdvPct !== null) pctsForWorst.push(rdvPct);
+  if (periodType === 'month' && salesPct !== null) pctsForWorst.push(salesPct);
+  const worstPct = Math.min(...pctsForWorst);
   const color = pctColor(worstPct);
 
   const points = [];
   if (callsPct < 95) points.push(`Volume d'appels à ${callsPct}% de l'objectif ajusté (${totals.calls}/${targetCalls}) — augmenter la cadence d'appel.`);
-  if (reportsPct < 95) points.push(`Rapports envoyés à ${reportsPct}% de l'objectif ajusté (${totals.reports}/${targetReports}) — vérifier si c'est un problème de volume d'appels ou de taux de conversion.`);
-  if (convPct < 95) points.push(`Taux de conversion appel→rapport à ${convRate.toFixed(1)}% (réf. ${TARGET_CONV_RATE}%) — en dessous de la référence, le pitch ou le ciblage est probablement à revoir.`);
-  if (totals.rdvs === 0 && totals.calls > 0) points.push(`Aucun RDV obtenu sur la période malgré ${totals.calls} appels — signal d'alerte sur la conversion rapport→RDV.`);
-  if (periodType === 'month' && salesPct < 95) points.push(`Ventes à ${salesPct}% de l'objectif mensuel (${totals.sales}/${targetSales.toFixed(1)}, réf. ${TARGET_SALES_MONTH}/mois) — écart à clarifier sur l'étape RDV→closing.`);
-  if (points.length === 0) points.push(`Objectifs atteints sur ${label}. Maintenir la cadence et surveiller le taux de conversion en RDV et en ventes.`);
+  if (rdvPct !== null && rdvPct < 95) points.push(`${rdvLabel} à ${rdvPct}% de l'objectif (${rdvValue}/${rdvTarget}) — vérifier le volume d'appels ou la qualité de prise/présentation de RDV.`);
+  if (t.hasRdvFaits && totals.rdvsFaits === 0 && totals.rdvsPris > 0) points.push(`Aucun RDV faits sur la période malgré ${totals.rdvsPris} RDV pris — signal d'alerte sur le taux de présence.`);
+  if (t.hasRdvPresentes && totals.rdvsPresentes === 0 && totals.rdvsPris > 0) points.push(`Aucun RDV présenté sur la période malgré ${totals.rdvsPris} RDV pris — signal d'alerte sur le taux de présence/qualification.`);
+  if (periodType === 'month' && salesPct !== null && salesPct < 95) points.push(`Ventes à ${salesPct}% de l'objectif mensuel (${totals.sales}/${targetSales.toFixed(1)}, réf. ${t.salesMonth}/mois) — écart à clarifier sur l'étape RDV→closing.`);
+  if (points.length === 0) points.push(`Objectifs atteints sur ${label}. Maintenir la cadence et surveiller le taux de conversion en RDV${t.salesMonth ? ' et en ventes' : ''}.`);
 
   return {
     html: `
       <div class="analysis-box ${color}">
-        <strong>Analyse ${label}</strong>
+        <strong>Analyse ${t.label} — ${label}</strong>
         <ul>${points.map(p => `<li>${p}</li>`).join('')}</ul>
       </div>
     `,
@@ -417,6 +714,7 @@ document.querySelectorAll('.tab').forEach(tab => {
   });
 });
 
+/* ---------- Report period controls ---------- */
 document.getElementById('report-preset').addEventListener('change', (e) => {
   document.getElementById('custom-dates-row').style.display = e.target.value === 'custom' ? 'flex' : 'none';
 });
@@ -425,9 +723,14 @@ function getReportRange() {
   const preset = document.getElementById('report-preset').value;
   const today = new Date();
   let start, end;
+
   if (preset === 'custom') {
     start = document.getElementById('report-start').value;
     end = document.getElementById('report-end').value;
+  } else if (preset === 'month') {
+    end = today.toISOString().split('T')[0];
+    const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    start = firstOfMonth.toISOString().split('T')[0];
   } else {
     end = today.toISOString().split('T')[0];
     const startDate = new Date();
@@ -443,15 +746,17 @@ async function loadReport() {
   const wrap = document.getElementById('report-table-wrap');
   const summaryEl = document.getElementById('report-summary');
   const analysisEl = document.getElementById('report-analysis');
-  const scope = document.getElementById('report-scope').value;
+  const [role, who] = document.getElementById('report-scope').value.split(':');
+  const t = Object.assign({ key: role }, TARGETS[role]);
   const { start, end } = getReportRange();
 
   if (SCRIPT_URL.indexOf('REMPLACER') !== -1) {
-    wrap.innerHTML = '<div class="empty-state">Backend non configuré.</div>';
+    wrap.innerHTML = '<div class="empty-state">Backend non configuré — voir Chouaib pour brancher le Google Sheet.</div>';
     summaryEl.innerHTML = '';
     analysisEl.innerHTML = '';
     return;
   }
+
   if (!start || !end) {
     wrap.innerHTML = '<div class="empty-state">Sélectionne une date de début et de fin.</div>';
     return;
@@ -461,7 +766,7 @@ async function loadReport() {
 
   try {
     const params = new URLSearchParams({ action: 'range', start, end });
-    if (scope !== 'global') params.set('name', scope);
+    if (who !== 'global') params.set('name', who);
 
     const res = await fetch(SCRIPT_URL + '?' + params.toString());
     const data = await res.json();
@@ -474,22 +779,57 @@ async function loadReport() {
       return;
     }
 
+    // Pour une vue "globale" par rôle, on ne garde que les lignes de ce rôle.
+    // On se base sur le champ role s'il est présent (recommandé côté backend),
+    // sinon sur l'appartenance à la liste SDR/Closer actuelle de cet appareil.
+    let candidateRows = data.rows;
+    if (who === 'global') {
+      const list = getList(role);
+      candidateRows = candidateRows.filter(r => r.role ? r.role === role : list.includes(r.name));
+    }
+
+    // Avec 2 saisies/jour (midi + soir), la dernière saisie du jour pour une personne
+    // remplace la précédente dans les totaux — on ne compte jamais les deux.
     const latestByKey = {};
-    data.rows.forEach(r => { latestByKey[`${r.date}|${r.name}`] = r; });
+    candidateRows.forEach(r => {
+      latestByKey[`${r.date}|${r.name}`] = r;
+    });
     const rows = Object.values(latestByKey);
+
+    if (rows.length === 0) {
+      wrap.innerHTML = '<div class="empty-state">Aucune donnée sur cette période.</div>';
+      summaryEl.innerHTML = '';
+      analysisEl.innerHTML = '';
+      if (reportChartInstance) { reportChartInstance.destroy(); reportChartInstance = null; }
+      return;
+    }
 
     const totals = rows.reduce((acc, r) => {
       acc.calls += Number(r.calls) || 0;
-      acc.reports += Number(r.reports) || 0;
-      acc.rdvs += Number(r.rdvs) || 0;
+      acc.rdvsPris += Number(r.rdvs_pris) || 0;
+      acc.rdvsFaits += Number(r.rdvs) || 0;
+      acc.rdvsPresentes += Number(r.rdvs_presentes) || 0;
       acc.meetings += Number(r.meetings) || 0;
       acc.sales += Number(r.sales) || 0;
       return acc;
-    }, { calls: 0, reports: 0, rdvs: 0, meetings: 0, sales: 0 });
+    }, { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, meetings: 0, sales: 0 });
 
     const uniqueDays = new Set(rows.map(r => r.date)).size;
-    const periodType = uniqueDays >= 25 ? 'month' : 'week';
-    const analysis = buildAnalysis(totals, uniqueDays, `du ${start} au ${end}`, periodType);
+    const presetValue = document.getElementById('report-preset').value;
+    const periodType = presetValue === 'month' ? 'month' : (uniqueDays >= 25 ? 'month' : 'week');
+
+    // Objectifs proratisés selon la date de démarrage de chaque personne
+    // (ex : quelqu'un qui commence le 15 du mois n'a pas le même objectif
+    // qu'une personne présente tout le mois).
+    let targetDays;
+    if (who === 'global') {
+      targetDays = getList(role).reduce((sum, p) => sum + effectiveDaysForPerson(p.startDate, start, end), 0);
+    } else {
+      const person = findPerson(role, who);
+      targetDays = effectiveDaysForPerson(person ? person.startDate : null, start, end);
+    }
+
+    const analysis = buildAnalysis(totals, targetDays, `du ${start} au ${end}`, periodType, t);
 
     summaryEl.innerHTML = `
       <div class="metric">
@@ -497,45 +837,53 @@ async function loadReport() {
         <p class="metric-value">${totals.calls}</p>
       </div>
       <div class="metric">
-        <p class="metric-label">Total rapports</p>
-        <p class="metric-value">${totals.reports}</p>
+        <p class="metric-label">Total RDV pris</p>
+        <p class="metric-value">${totals.rdvsPris}</p>
       </div>
+      ${t.hasRdvFaits ? `
       <div class="metric">
-        <p class="metric-label">Total RDV</p>
-        <p class="metric-value">${totals.rdvs}</p>
-      </div>
+        <p class="metric-label">Total RDV faits</p>
+        <p class="metric-value">${totals.rdvsFaits}</p>
+      </div>` : ''}
+      ${t.hasRdvPresentes ? `
+      <div class="metric">
+        <p class="metric-label">Total RDV présentés</p>
+        <p class="metric-value">${totals.rdvsPresentes}</p>
+      </div>` : ''}
+      ${t.salesMonth ? `
       <div class="metric">
         <p class="metric-label">Total ventes</p>
         <p class="metric-value">${totals.sales}<span style="font-size:13px;color:var(--text-secondary);"> / ${analysis.targetSales.toFixed(1)}</span></p>
         <p class="metric-pct">${badgeHtml(analysis.salesPct)}</p>
-      </div>
+      </div>` : ''}
     `;
 
     analysisEl.innerHTML = analysis.html;
 
     const byDate = {};
     rows.forEach(r => {
-      if (!byDate[r.date]) byDate[r.date] = { calls: 0, reports: 0, rdvs: 0, sales: 0 };
+      if (!byDate[r.date]) byDate[r.date] = { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, sales: 0 };
       byDate[r.date].calls += Number(r.calls) || 0;
-      byDate[r.date].reports += Number(r.reports) || 0;
-      byDate[r.date].rdvs += Number(r.rdvs) || 0;
+      byDate[r.date].rdvsPris += Number(r.rdvs_pris) || 0;
+      byDate[r.date].rdvsFaits += Number(r.rdvs) || 0;
+      byDate[r.date].rdvsPresentes += Number(r.rdvs_presentes) || 0;
       byDate[r.date].sales += Number(r.sales) || 0;
     });
     const sortedDates = Object.keys(byDate).sort();
+
+    const datasets = [
+      { label: 'Appels', data: sortedDates.map(d => byDate[d].calls), borderColor: '#1aa37a', backgroundColor: 'rgba(26,163,122,0.1)', tension: 0.3 },
+      { label: 'RDV pris', data: sortedDates.map(d => byDate[d].rdvsPris), borderColor: '#5f5f5d', backgroundColor: 'rgba(95,95,93,0.1)', tension: 0.3 }
+    ];
+    if (t.hasRdvFaits) datasets.push({ label: 'RDV faits', data: sortedDates.map(d => byDate[d].rdvsFaits), borderColor: '#d8504a', backgroundColor: 'rgba(216,80,74,0.1)', tension: 0.3 });
+    if (t.hasRdvPresentes) datasets.push({ label: 'RDV présentés', data: sortedDates.map(d => byDate[d].rdvsPresentes), borderColor: '#e0a458', backgroundColor: 'rgba(224,164,88,0.1)', tension: 0.3 });
+    if (t.salesMonth) datasets.push({ label: 'Ventes', data: sortedDates.map(d => byDate[d].sales), borderColor: '#0f6e56', backgroundColor: 'rgba(15,110,86,0.1)', tension: 0.3, borderWidth: 3 });
 
     const ctx = document.getElementById('report-chart').getContext('2d');
     if (reportChartInstance) reportChartInstance.destroy();
     reportChartInstance = new Chart(ctx, {
       type: 'line',
-      data: {
-        labels: sortedDates,
-        datasets: [
-          { label: 'Appels', data: sortedDates.map(d => byDate[d].calls), borderColor: '#1aa37a', backgroundColor: 'rgba(26,163,122,0.1)', tension: 0.3 },
-          { label: 'Rapports', data: sortedDates.map(d => byDate[d].reports), borderColor: '#5f5f5d', backgroundColor: 'rgba(95,95,93,0.1)', tension: 0.3 },
-          { label: 'RDV', data: sortedDates.map(d => byDate[d].rdvs), borderColor: '#d8504a', backgroundColor: 'rgba(216,80,74,0.1)', tension: 0.3 },
-          { label: 'Ventes', data: sortedDates.map(d => byDate[d].sales), borderColor: '#0f6e56', backgroundColor: 'rgba(15,110,86,0.1)', tension: 0.3, borderWidth: 3 }
-        ]
-      },
+      data: { labels: sortedDates, datasets: datasets },
       options: {
         responsive: true,
         plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 12 } } } },
@@ -548,8 +896,9 @@ async function loadReport() {
         <td>${r.date}</td>
         <td>${r.name}</td>
         <td>${r.calls}</td>
-        <td>${r.reports}</td>
-        <td>${r.rdvs}</td>
+        <td>${r.rdvs_pris || 0}</td>
+        <td>${r.rdvs || 0}</td>
+        <td>${r.rdvs_presentes || 0}</td>
         <td>${r.meetings || 0}</td>
         <td>${r.sales}</td>
       </tr>
@@ -558,7 +907,7 @@ async function loadReport() {
     wrap.innerHTML = `
       <table>
         <thead>
-          <tr><th>Date</th><th>SDR</th><th>Appels</th><th>Rapports</th><th>RDV</th><th>Réunions</th><th>Ventes</th></tr>
+          <tr><th>Date</th><th>Nom</th><th>Appels</th><th>RDV pris</th><th>RDV faits</th><th>RDV présentés</th><th>Réunions</th><th>Ventes</th></tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
       </table>
@@ -572,30 +921,71 @@ document.getElementById('refresh-report-btn').addEventListener('click', loadRepo
 document.getElementById('report-scope').addEventListener('change', loadReport);
 document.getElementById('report-preset').addEventListener('change', loadReport);
 
-/* ---------- Shared computed state ---------- */
-let computed = { callsPct: 0, reportsPct: 0, convRate: 0, convPct: 0, dynamicCallTarget: 0, dynamicReportTarget: 0 };
-
 /* ---------- Entry form ---------- */
 function calc() {
-  const calls    = Number(document.getElementById('calls').value)    || 0;
-  const reports  = Number(document.getElementById('reports').value)  || 0;
-  const rdvs     = Number(document.getElementById('rdvs').value)     || 0;
+  const role = currentEntryRole();
+  const t = TARGETS[role];
+  const mpc = minPerCall(role);
+
+  const calls = Number(document.getElementById('calls').value) || 0;
+  const rdvsPris = Number(document.getElementById('rdvs-pris').value) || 0;
+  const rdvsFaits = t.hasRdvFaits ? (Number(document.getElementById('rdvs-faits').value) || 0) : 0;
+  const rdvsPresentes = t.hasRdvPresentes ? (Number(document.getElementById('rdvs-presentes').value) || 0) : 0;
   const meetings = Number(document.getElementById('meetings').value) || 0;
-  const sales    = Number(document.getElementById('sales').value)    || 0;
+  const sales = t.salesMonth ? (Number(document.getElementById('sales').value) || 0) : 0;
   const name = document.getElementById('sdr-name').value || '—';
   const date = document.getElementById('sdr-date').value || '—';
 
-  const timeUsed = (reports * MIN_PER_REPORT) + (rdvs * MIN_PER_RDV) + (meetings * MIN_PER_MEETING);
-  const callsEquivalentLost = timeUsed / MIN_PER_CALL;
-  const dynamicCallTarget = Math.max(Math.round(TARGET_CALLS - callsEquivalentLost), 0);
-  const dynamicReportTarget = Math.max(TARGET_REPORTS - rdvs, 0);
+  // Objectif d'appels dynamique, réduit par le temps déjà consommé.
+  // Seul le RDV fait (réunion client réelle, 1h) réduit la capacité d'appels —
+  // le RDV présenté (côté SDR) ne consomme pas de créneau dédié.
+  const timeUsed = (t.hasRdvFaits ? rdvsFaits * MIN_PER_RDV : 0) + (meetings * MIN_PER_MEETING);
+  const callsEquivalentLost = timeUsed / mpc;
+  const dynamicCallTarget = Math.max(Math.round(t.calls - callsEquivalentLost), 0);
+  const callsPct = dynamicCallTarget > 0 ? Math.round((calls / dynamicCallTarget) * 100) : (calls > 0 ? 100 : 0);
 
-  const callsPct   = dynamicCallTarget   > 0 ? Math.round((calls   / dynamicCallTarget)   * 100) : (calls   > 0 ? 100 : 0);
-  const reportsPct = dynamicReportTarget > 0 ? Math.round((reports / dynamicReportTarget) * 100) : (reports > 0 ? 100 : 0);
-  const convRate   = calls > 0 ? (reports / calls) * 100 : 0;
-  const convPct    = Math.round((convRate / TARGET_CONV_RATE) * 100);
+  let rdvsPrisBox, rdvsPrisLine;
+  const prisTarget = t.rdvTargetField === 'pris' ? t.rdvTargetValue : null;
+  if (prisTarget) {
+    const prisPct = Math.round((rdvsPris / prisTarget) * 100);
+    rdvsPrisBox = `
+      <div class="metric">
+        <p class="metric-label">RDV pris / objectif</p>
+        <p class="metric-value">${rdvsPris}<span style="font-size:13px;color:var(--text-secondary);"> / ${prisTarget}</span></p>
+        <p class="metric-pct">${badgeHtml(prisPct)}</p>
+      </div>`;
+    rdvsPrisLine = `RDV pris: ${rdvsPris}/${prisTarget} (${prisPct}%)`;
+  } else {
+    rdvsPrisBox = `
+      <div class="metric">
+        <p class="metric-label">RDV pris</p>
+        <p class="metric-value">${rdvsPris}</p>
+      </div>`;
+    rdvsPrisLine = `RDV pris: ${rdvsPris}`;
+  }
 
-  computed = { callsPct, reportsPct, convRate: parseFloat(convRate.toFixed(1)), convPct, dynamicCallTarget, dynamicReportTarget };
+  const secondaryLabel = t.hasRdvFaits ? 'RDV faits' : 'RDV présentés';
+  const secondaryValue = t.hasRdvFaits ? rdvsFaits : rdvsPresentes;
+  const secondaryField = t.hasRdvFaits ? 'faits' : 'presentes';
+  const secondaryTarget = t.rdvTargetField === secondaryField ? t.rdvTargetValue : null;
+  let secondaryBox, secondaryLine;
+  if (secondaryTarget) {
+    const secPct = Math.round((secondaryValue / secondaryTarget) * 100);
+    secondaryBox = `
+      <div class="metric">
+        <p class="metric-label">${secondaryLabel} / objectif</p>
+        <p class="metric-value">${secondaryValue}<span style="font-size:13px;color:var(--text-secondary);"> / ${secondaryTarget}</span></p>
+        <p class="metric-pct">${badgeHtml(secPct)}</p>
+      </div>`;
+    secondaryLine = `${secondaryLabel}: ${secondaryValue}/${secondaryTarget} (${secPct}%)`;
+  } else {
+    secondaryBox = `
+      <div class="metric">
+        <p class="metric-label">${secondaryLabel}</p>
+        <p class="metric-value">${secondaryValue}</p>
+      </div>`;
+    secondaryLine = `${secondaryLabel}: ${secondaryValue}`;
+  }
 
   document.getElementById('metrics').innerHTML = `
     <div class="metric">
@@ -603,44 +993,109 @@ function calc() {
       <p class="metric-value">${calls}<span style="font-size:13px;color:var(--text-secondary);"> / ${dynamicCallTarget}</span></p>
       <p class="metric-pct">${badgeHtml(callsPct)}</p>
     </div>
+    ${rdvsPrisBox}
+    ${secondaryBox}
     <div class="metric">
-      <p class="metric-label">Rapports / objectif ajusté</p>
-      <p class="metric-value">${reports}<span style="font-size:13px;color:var(--text-secondary);"> / ${dynamicReportTarget}</span></p>
-      <p class="metric-pct">${badgeHtml(reportsPct)}</p>
+      <p class="metric-label">Réunions équipe</p>
+      <p class="metric-value">${meetings}</p>
     </div>
+    ${t.salesMonth ? `
     <div class="metric">
-      <p class="metric-label">Taux appel→rapport</p>
-      <p class="metric-value">${convRate.toFixed(1)}%<span style="font-size:13px;color:var(--text-secondary);"> / ${TARGET_CONV_RATE}%</span></p>
-      <p class="metric-pct">${badgeHtml(convPct)}</p>
-    </div>
-    <div class="metric">
-      <p class="metric-label">RDV / ventes</p>
-      <p class="metric-value">${rdvs} / ${sales}</p>
-    </div>
+      <p class="metric-label">Ventes signées</p>
+      <p class="metric-value">${sales}</p>
+    </div>` : ''}
   `;
 
   document.getElementById('summary-text').textContent =
-`${name} — ${date}
-Appels: ${calls}/${dynamicCallTarget} (${callsPct}%) — objectif ajusté selon rapports, RDV et réunions du jour
-Rapports envoyés: ${reports}/${dynamicReportTarget} (${reportsPct}%)
-Taux conversion appel→rapport: ${convRate.toFixed(1)}% (réf. ${TARGET_CONV_RATE}%)
-RDV: ${rdvs}
-Réunions équipe: ${meetings}
-Ventes signées: ${sales}`;
+`${t.label} — ${name} — ${date}
+Appels: ${calls}/${dynamicCallTarget} (${callsPct}%) — objectif ajusté selon ${t.hasRdvFaits ? 'RDV faits et ' : ''}réunions du jour
+${rdvsPrisLine}
+${secondaryLine}
+Réunions équipe: ${meetings}${t.salesMonth ? `
+Ventes signées: ${sales}` : ''}`;
 }
 
-['sdr-name','sdr-date','calls','reports','rdvs','meetings','sales'].forEach(id => {
+async function loadMonthCumul() {
+  const container = document.getElementById('month-cumul-box');
+  const role = currentEntryRole();
+  const t = TARGETS[role];
+  const name = document.getElementById('sdr-name').value;
+
+  if (!name) { container.innerHTML = ''; return; }
+  if (SCRIPT_URL.indexOf('REMPLACER') !== -1) {
+    container.innerHTML = '<p style="font-size:12px;color:var(--text-muted);margin:0;">Cumul du mois indisponible — backend non configuré.</p>';
+    return;
+  }
+
+  const today = new Date();
+  const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const start = firstOfMonth.toISOString().split('T')[0];
+  const end = today.toISOString().split('T')[0];
+
+  container.innerHTML = '<p style="font-size:12px;color:var(--text-muted);margin:0;">Chargement du cumul du mois…</p>';
+
+  try {
+    const params = new URLSearchParams({ action: 'range', start, end, name });
+    const res = await fetch(SCRIPT_URL + '?' + params.toString());
+    const data = await res.json();
+
+    if (!data || !data.rows || data.rows.length === 0) {
+      container.innerHTML = '<p style="font-size:12px;color:var(--text-muted);margin:0;">Aucune donnée ce mois-ci pour l\'instant.</p>';
+      return;
+    }
+
+    // Une seule ligne retenue par jour (la dernière saisie du jour fait foi)
+    const latestByDate = {};
+    data.rows.forEach(r => { latestByDate[r.date] = r; });
+    const rows = Object.values(latestByDate);
+
+    const totals = rows.reduce((acc, r) => {
+      acc.calls += Number(r.calls) || 0;
+      acc.rdvsPris += Number(r.rdvs_pris) || 0;
+      acc.rdvsFaits += Number(r.rdvs) || 0;
+      acc.rdvsPresentes += Number(r.rdvs_presentes) || 0;
+      acc.meetings += Number(r.meetings) || 0;
+      acc.sales += Number(r.sales) || 0;
+      return acc;
+    }, { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, meetings: 0, sales: 0 });
+
+    const person = findPerson(role, name);
+    const targetDays = effectiveDaysForPerson(person ? person.startDate : null, start, end);
+    const analysis = buildAnalysis(totals, targetDays, 'sur le mois en cours', 'month', t);
+
+    const secondaryLabel = t.hasRdvFaits ? 'RDV faits' : 'RDV présentés';
+    const secondaryValue = t.hasRdvFaits ? totals.rdvsFaits : totals.rdvsPresentes;
+
+    container.innerHTML = `
+      <p style="font-size:13px;font-weight:600;margin:0 0 8px;">Cumul du mois — ${name}</p>
+      <p style="font-size:13px;margin:0 0 10px;color:var(--text-secondary);">
+        Appels : ${totals.calls} · RDV pris : ${totals.rdvsPris} · ${secondaryLabel} : ${secondaryValue}${t.salesMonth ? ` · Ventes : ${totals.sales}/${t.salesMonth}` : ''}
+      </p>
+      ${analysis.html}
+    `;
+  } catch (e) {
+    container.innerHTML = '<p style="font-size:12px;color:var(--danger);margin:0;">Erreur de chargement du cumul.</p>';
+  }
+}
+
+['sdr-name','sdr-date','calls','rdvs-pris','rdvs-faits','rdvs-presentes','meetings','sales'].forEach(id => {
   document.getElementById(id).addEventListener('input', calc);
 });
+document.getElementById('sdr-name').addEventListener('change', loadMonthCumul);
+
+renderEntryPersonOptions();
+renderReportScopeOptions();
 
 const today = new Date().toISOString().split('T')[0];
 document.getElementById('sdr-date').value = today;
 document.getElementById('sdr-moment').value = new Date().getHours() < 14 ? 'midi' : 'soir';
 calc();
+loadMonthCumul();
 
-/* ---------- Submit ---------- */
+/* ---------- Submit to Google Sheet ---------- */
 document.getElementById('submit-btn').addEventListener('click', async () => {
   const statusEl = document.getElementById('status');
+  const role = currentEntryRole();
   const name = document.getElementById('sdr-name').value;
   const date = document.getElementById('sdr-date').value;
 
@@ -649,20 +1104,23 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
     statusEl.className = "status error";
     return;
   }
+  if (SCRIPT_URL.indexOf('REMPLACER') !== -1) {
+    statusEl.textContent = "Configuration en attente — l'URL du backend n'est pas encore branchée.";
+    statusEl.className = "status error";
+    return;
+  }
 
   const payload = {
-    name,
-    date,
-    moment:   document.getElementById('sdr-moment').value,
-    calls:    Number(document.getElementById('calls').value)    || 0,
-    reports:  Number(document.getElementById('reports').value)  || 0,
-    rdvs:     Number(document.getElementById('rdvs').value)     || 0,
+    role: role,
+    name: name,
+    date: date,
+    moment: document.getElementById('sdr-moment').value,
+    calls: Number(document.getElementById('calls').value) || 0,
+    rdvs_pris: Number(document.getElementById('rdvs-pris').value) || 0,
+    rdvs: TARGETS[role].hasRdvFaits ? (Number(document.getElementById('rdvs-faits').value) || 0) : 0,
+    rdvs_presentes: TARGETS[role].hasRdvPresentes ? (Number(document.getElementById('rdvs-presentes').value) || 0) : 0,
     meetings: Number(document.getElementById('meetings').value) || 0,
-    sales:    Number(document.getElementById('sales').value)    || 0,
-    calls_pct:   `${Number(document.getElementById('calls').value) || 0}/${computed.dynamicCallTarget} - ${computed.callsPct}%`,
-    reports_pct: `${Number(document.getElementById('reports').value) || 0}/${computed.dynamicReportTarget} - ${computed.reportsPct}%`,
-    conv_rate:   `${Number(document.getElementById('reports').value) || 0}/${Number(document.getElementById('calls').value) || 0} - ${computed.convRate}%`,
-    conv_pct:    `${computed.convRate}% / ${TARGET_CONV_RATE}% cible - ${computed.convPct}%`
+    sales: TARGETS[role].salesMonth ? (Number(document.getElementById('sales').value) || 0) : 0
   };
 
   const btn = document.getElementById('submit-btn');
@@ -676,18 +1134,11 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-
-    fetch(WEBHOOK_URL, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).catch(err => console.error('Webhook send failed:', err));
-
     statusEl.textContent = payload.moment === 'midi'
       ? "Rapport de mi-journée envoyé."
       : "Rapport du soir envoyé — il fait foi pour le total du jour.";
     statusEl.className = "status success";
+    loadMonthCumul();
   } catch (e) {
     statusEl.textContent = "Erreur d'envoi — vérifie ta connexion.";
     statusEl.className = "status error";
@@ -697,6 +1148,7 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
   }
 });
 
+/* Initialize date pickers for custom range with sensible default */
 (function initReportDates() {
   const today = new Date().toISOString().split('T')[0];
   const weekAgo = new Date();
