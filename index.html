@@ -380,10 +380,40 @@
 </div>
 <script>
 /* =========================================================
-   CONFIGURATION — à remplir par Chouaib après déploiement
-   du Google Apps Script (voir instructions fournies séparément)
+   CONFIGURATION
    ========================================================= */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx0hIPAyUzibS27lwk01WfqHqkS9_D9EoM4r8F0-uaRHFtDdMGDs5zH-5se_a5ZAK6UeA/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzWvWgPEpA8Q4tGa1ay75WhRrmEzDuw8mo0VNLR-6M8V-yZ4-WDB6BC-GSJOs5k1EBwHw/exec";
+
+/* ---------- Lecture des données via JSONP ----------
+   Google Apps Script ne renvoie pas d'en-tête CORS exploitable par fetch()
+   depuis un autre domaine. On charge donc la réponse via une balise <script>,
+   qui n'est pas soumise à cette restriction. Le backend renvoie
+   callback({...}) quand le paramètre "callback" est présent.
+---------------------------------------------------- */
+function jsonpGet(params) {
+  return new Promise((resolve, reject) => {
+    const cb = 'cx_cb_' + Date.now() + '_' + Math.floor(Math.random() * 100000);
+    const script = document.createElement('script');
+    const timer = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 20000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      try { delete window[cb]; } catch (e) { window[cb] = undefined; }
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[cb] = (data) => { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new Error('network')); };
+
+    params.set('callback', cb);
+    script.src = SCRIPT_URL + '?' + params.toString();
+    document.body.appendChild(script);
+  });
+}
+
+function backendReady() {
+  return SCRIPT_URL.indexOf('REMPLACER') === -1 && SCRIPT_URL.indexOf('/exec') !== -1;
+}
 
 /* Objectifs de référence par rôle */
 const TARGETS = {
@@ -750,7 +780,7 @@ async function loadReport() {
   const t = Object.assign({ key: role }, TARGETS[role]);
   const { start, end } = getReportRange();
 
-  if (SCRIPT_URL.indexOf('REMPLACER') !== -1) {
+  if (!backendReady()) {
     wrap.innerHTML = '<div class="empty-state">Backend non configuré — voir Chouaib pour brancher le Google Sheet.</div>';
     summaryEl.innerHTML = '';
     analysisEl.innerHTML = '';
@@ -768,8 +798,7 @@ async function loadReport() {
     const params = new URLSearchParams({ action: 'range', start, end });
     if (who !== 'global') params.set('name', who);
 
-    const res = await fetch(SCRIPT_URL + '?' + params.toString());
-    const data = await res.json();
+    const data = await jsonpGet(params);
 
     if (!data || !data.rows || data.rows.length === 0) {
       wrap.innerHTML = '<div class="empty-state">Aucune donnée sur cette période.</div>';
@@ -780,12 +809,12 @@ async function loadReport() {
     }
 
     // Pour une vue "globale" par rôle, on ne garde que les lignes de ce rôle.
-    // On se base sur le champ role s'il est présent (recommandé côté backend),
+    // On se base sur le champ role s'il est présent (renvoyé par le backend),
     // sinon sur l'appartenance à la liste SDR/Closer actuelle de cet appareil.
     let candidateRows = data.rows;
     if (who === 'global') {
       const list = getList(role);
-      candidateRows = candidateRows.filter(r => r.role ? r.role === role : list.includes(r.name));
+      candidateRows = candidateRows.filter(r => r.role ? r.role === role : list.some(p => p.name === r.name));
     }
 
     // Avec 2 saisies/jour (midi + soir), la dernière saisie du jour pour une personne
@@ -1022,10 +1051,7 @@ async function loadMonthCumul() {
   const name = document.getElementById('sdr-name').value;
 
   if (!name) { container.innerHTML = ''; return; }
-  if (SCRIPT_URL.indexOf('REMPLACER') !== -1) {
-    container.innerHTML = '<p style="font-size:12px;color:var(--text-muted);margin:0;">Cumul du mois indisponible — backend non configuré.</p>';
-    return;
-  }
+  if (!backendReady()) { container.innerHTML = ''; return; }
 
   const today = new Date();
   const firstOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -1036,8 +1062,7 @@ async function loadMonthCumul() {
 
   try {
     const params = new URLSearchParams({ action: 'range', start, end, name });
-    const res = await fetch(SCRIPT_URL + '?' + params.toString());
-    const data = await res.json();
+    const data = await jsonpGet(params);
 
     if (!data || !data.rows || data.rows.length === 0) {
       container.innerHTML = '<p style="font-size:12px;color:var(--text-muted);margin:0;">Aucune donnée ce mois-ci pour l\'instant.</p>';
@@ -1074,7 +1099,8 @@ async function loadMonthCumul() {
       ${analysis.html}
     `;
   } catch (e) {
-    container.innerHTML = '<p style="font-size:12px;color:var(--danger);margin:0;">Erreur de chargement du cumul.</p>';
+    // Échec silencieux : la saisie et l'envoi restent prioritaires.
+    container.innerHTML = '';
   }
 }
 
@@ -1104,7 +1130,7 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
     statusEl.className = "status error";
     return;
   }
-  if (SCRIPT_URL.indexOf('REMPLACER') !== -1) {
+  if (!backendReady()) {
     statusEl.textContent = "Configuration en attente — l'URL du backend n'est pas encore branchée.";
     statusEl.className = "status error";
     return;
@@ -1131,14 +1157,15 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
     await fetch(SCRIPT_URL, {
       method: 'POST',
       mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     });
     statusEl.textContent = payload.moment === 'midi'
       ? "Rapport de mi-journée envoyé."
       : "Rapport du soir envoyé — il fait foi pour le total du jour.";
     statusEl.className = "status success";
-    loadMonthCumul();
+    // Laisse le temps au Sheet d'enregistrer la ligne avant de relire le cumul.
+    setTimeout(loadMonthCumul, 1200);
   } catch (e) {
     statusEl.textContent = "Erreur d'envoi — vérifie ta connexion.";
     statusEl.className = "status error";
