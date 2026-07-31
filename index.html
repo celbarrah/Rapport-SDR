@@ -382,7 +382,12 @@
 /* =========================================================
    CONFIGURATION
    ========================================================= */
-const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwki_cDh_doEcQJ-1dxOo6q7J58pNE0U4kDaFHYE5FVgv2AEn9PFviEhrPa_HinToIthQ/exec";
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwuV-2n-p6ydlMklF-cNS_AhGnrAEjhT960gAkVSoNBl5znNLoc6fRD45SJqOfqNuEdbQ/exec";
+
+/* Webhook n8n qui reçoit le rapport complet après chaque saisie.
+   Utilise bien l'URL de PRODUCTION (/webhook/), pas /webhook-test/ qui
+   n'écoute que 120 secondes après un clic sur "Test workflow". */
+const N8N_WEBHOOK_URL = "https://radouane.automatespot.com/webhook/dea5ccbf-ba69-41f9-93ed-fb81e87f735a";
 
 /* ---------- Lecture des données via JSONP ----------
    Google Apps Script ne renvoie pas d'en-tête CORS exploitable par fetch()
@@ -413,6 +418,125 @@ function jsonpGet(params) {
 
 function backendReady() {
   return SCRIPT_URL.indexOf('REMPLACER') === -1 && SCRIPT_URL.indexOf('/exec') !== -1;
+}
+
+/* ---------- Envoi du rapport complet vers n8n ---------- */
+function pctIcon(pct) {
+  if (pct >= 95) return '🟢';
+  if (pct >= 80) return '🟠';
+  return '🔴';
+}
+
+function fmtNum(n) {
+  return Number(n).toLocaleString('fr-FR');
+}
+
+/** Texte du rapport, identique à ce qui s'affiche dans l'app. */
+function buildReportText(d, cumul) {
+  const t = TARGETS[d.role];
+
+  const mpc = 480 / t.calls;
+  const timeUsed = (t.hasRdvFaits ? d.rdvs * MIN_PER_RDV : 0) + (d.meetings * MIN_PER_MEETING);
+  const callTarget = Math.max(Math.round(t.calls - (timeUsed / mpc)), 0);
+  const callsPct = callTarget > 0 ? Math.round((d.calls / callTarget) * 100) : (d.calls > 0 ? 100 : 0);
+
+  const lines = [];
+  lines.push('📊 Rapport ' + t.label + ' — ' + d.name);
+  lines.push(d.date + ' · saisie du ' + d.moment);
+  lines.push(pctIcon(callsPct) + ' Appels : ' + d.calls + ' / ' + callTarget + ' — ' + callsPct + '% (objectif ajusté)');
+
+  if (t.rdvTargetField === 'pris') {
+    const p = Math.round((d.rdvs_pris / t.rdvTargetValue) * 100);
+    lines.push(pctIcon(p) + ' RDV pris : ' + d.rdvs_pris + ' / ' + t.rdvTargetValue + ' — ' + p + '%');
+  } else {
+    lines.push('• RDV pris : ' + d.rdvs_pris);
+  }
+
+  if (t.hasRdvPresentes) {
+    if (t.rdvTargetField === 'presentes') {
+      const p = Math.round((d.rdvs_presentes / t.rdvTargetValue) * 100);
+      lines.push(pctIcon(p) + ' RDV présentés : ' + d.rdvs_presentes + ' / ' + t.rdvTargetValue + ' — ' + p + '%');
+    } else {
+      lines.push('• RDV présentés : ' + d.rdvs_presentes);
+    }
+  }
+
+  if (t.hasRdvFaits) {
+    if (t.rdvTargetField === 'faits') {
+      const p = Math.round((d.rdvs / t.rdvTargetValue) * 100);
+      lines.push(pctIcon(p) + ' RDV faits : ' + d.rdvs + ' / ' + t.rdvTargetValue + ' — ' + p + '%');
+    } else {
+      lines.push('• RDV faits : ' + d.rdvs);
+    }
+  }
+
+  lines.push('• Réunions équipe : ' + d.meetings);
+
+  if (t.salesMonth) {
+    lines.push('• Ventes signées : ' + d.sales + ' (objectif mensuel : ' + t.salesMonth + ')');
+  }
+
+  if (cumul) {
+    let c = 'Cumul du mois — appels : ' + fmtNum(cumul.calls) + ' · RDV pris : ' + fmtNum(cumul.rdvsPris);
+    if (t.hasRdvPresentes) c += ' · RDV présentés : ' + fmtNum(cumul.rdvsPresentes);
+    if (t.hasRdvFaits) c += ' · RDV faits : ' + fmtNum(cumul.rdvsFaits);
+    if (t.salesMonth) c += ' · ventes : ' + cumul.sales + '/' + t.salesMonth;
+    lines.push(c);
+  }
+
+  if (d.moment === 'soir') {
+    lines.push('Saisie du soir : elle fait foi pour le total du jour.');
+  }
+
+  return lines.join('\n');
+}
+
+/** Récupère le cumul du mois de la personne (une ligne par jour, la
+ *  dernière saisie du jour fait foi). Renvoie null si indisponible. */
+async function fetchMonthTotals(name) {
+  try {
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+    const end = today.toISOString().split('T')[0];
+
+    const data = await jsonpGet(new URLSearchParams({ action: 'range', start, end, name }));
+    if (!data || !data.rows || !data.rows.length) return null;
+
+    const latestByDate = {};
+    data.rows.forEach(r => { latestByDate[r.date] = r; });
+
+    return Object.values(latestByDate).reduce((acc, r) => {
+      acc.calls += Number(r.calls) || 0;
+      acc.rdvsPris += Number(r.rdvs_pris) || 0;
+      acc.rdvsFaits += Number(r.rdvs) || 0;
+      acc.rdvsPresentes += Number(r.rdvs_presentes) || 0;
+      acc.meetings += Number(r.meetings) || 0;
+      acc.sales += Number(r.sales) || 0;
+      return acc;
+    }, { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, meetings: 0, sales: 0 });
+  } catch (e) {
+    return null;
+  }
+}
+
+/** Envoie le rapport à n8n : le texte formaté + toutes les valeurs brutes. */
+async function sendReportToN8N(payload) {
+  try {
+    const cumul = await fetchMonthTotals(payload.name);
+    const body = Object.assign({}, payload, {
+      text: buildReportText(payload, cumul),
+      cumul_mois: cumul
+    });
+
+    await fetch(N8N_WEBHOOK_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    });
+  } catch (e) {
+    console.warn('Webhook n8n indisponible', e);
+  }
 }
 
 /* Objectifs de référence par rôle */
@@ -1164,8 +1288,13 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
       ? "Rapport de mi-journée envoyé."
       : "Rapport du soir envoyé — il fait foi pour le total du jour.";
     statusEl.className = "status success";
-    // Laisse le temps au Sheet d'enregistrer la ligne avant de relire le cumul.
-    setTimeout(loadMonthCumul, 1200);
+
+    // Laisse le temps au Sheet d'enregistrer la ligne, puis relit le cumul
+    // et envoie le rapport complet à n8n (cumul à jour inclus).
+    setTimeout(() => {
+      loadMonthCumul();
+      sendReportToN8N(payload);
+    }, 1500);
   } catch (e) {
     statusEl.textContent = "Erreur d'envoi — vérifie ta connexion.";
     statusEl.className = "status error";
