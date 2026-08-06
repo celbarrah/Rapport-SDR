@@ -282,6 +282,10 @@
       </div>
 
       <div class="grid-4" style="grid-template-columns: repeat(2, 1fr);" id="entry-grid">
+        <div id="leads-field">
+          <label for="leads">Leads reçus</label>
+          <input type="number" id="leads" min="0" value="0">
+        </div>
         <div>
           <label for="calls">Nombre d'appels</label>
           <input type="number" id="calls" min="0" value="0">
@@ -476,11 +480,24 @@ function buildReportText(d, cumul) {
     lines.push('• Ventes signées : ' + d.sales + ' (objectif mensuel : ' + t.salesMonth + ')');
   }
 
+  if (t.hasLeads) {
+    const leadsToRdvPct = d.leads > 0 ? Math.round((d.rdvs / d.leads) * 100) : 0;
+    const leadsToSalesPct = d.leads > 0 ? Math.round((d.sales / d.leads) * 100) : 0;
+    lines.push('• Leads reçus : ' + d.leads);
+    lines.push('• Leads → RDV faits : ' + d.rdvs + '/' + d.leads + ' — ' + leadsToRdvPct + '%');
+    lines.push('• Leads → Ventes : ' + d.sales + '/' + d.leads + ' — ' + leadsToSalesPct + '%');
+  }
+
   if (cumul) {
     let c = 'Cumul du mois — appels : ' + fmtNum(cumul.calls) + ' · RDV pris : ' + fmtNum(cumul.rdvsPris);
     if (t.hasRdvPresentes) c += ' · RDV présentés : ' + fmtNum(cumul.rdvsPresentes);
     if (t.hasRdvFaits) c += ' · RDV faits : ' + fmtNum(cumul.rdvsFaits);
     if (t.salesMonth) c += ' · ventes : ' + cumul.sales + '/' + t.salesMonth;
+    if (t.hasLeads) {
+      const cumulRdvPct = cumul.leads > 0 ? Math.round((cumul.rdvsFaits / cumul.leads) * 100) : 0;
+      const cumulSalesPct = cumul.leads > 0 ? Math.round((cumul.sales / cumul.leads) * 100) : 0;
+      c += ' · leads : ' + fmtNum(cumul.leads) + ' (RDV faits ' + cumulRdvPct + '%, ventes ' + cumulSalesPct + '%)';
+    }
     lines.push(c);
   }
 
@@ -512,8 +529,9 @@ async function fetchMonthTotals(name) {
       acc.rdvsPresentes += Number(r.rdvs_presentes) || 0;
       acc.meetings += Number(r.meetings) || 0;
       acc.sales += Number(r.sales) || 0;
+      acc.leads += Number(r.leads) || 0;
       return acc;
-    }, { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, meetings: 0, sales: 0 });
+    }, { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, meetings: 0, sales: 0, leads: 0 });
   } catch (e) {
     return null;
   }
@@ -541,8 +559,8 @@ async function sendReportToN8N(payload) {
 
 /* Objectifs de référence par rôle */
 const TARGETS = {
-  sdr:    { label: 'SDR',    pluralLabel: 'SDR',     calls: 200, salesMonth: null, hasRdvFaits: false, hasRdvPresentes: true, rdvTargetField: 'presentes', rdvTargetValue: 2 },
-  closer: { label: 'Closer', pluralLabel: 'Closers',  calls: 80,  salesMonth: 14,   hasRdvFaits: true,  hasRdvPresentes: false, rdvTargetField: null,        rdvTargetValue: null }
+  sdr:    { label: 'SDR',    pluralLabel: 'SDR',     calls: 200, salesMonth: null, hasRdvFaits: false, hasRdvPresentes: true, hasLeads: false, rdvTargetField: 'presentes', rdvTargetValue: 2 },
+  closer: { label: 'Closer', pluralLabel: 'Closers',  calls: 80,  salesMonth: 14,   hasRdvFaits: true,  hasRdvPresentes: false, hasLeads: true,  rdvTargetField: null,        rdvTargetValue: null }
 };
 const MIN_PER_RDV = 60;      // durée d'un RDV client (SDR comme Closer, confirmé 1h pour le Closer)
 const MIN_PER_MEETING = 15;  // réunion d'équipe interne (confirmé 15 min, SDR comme Closer)
@@ -553,7 +571,7 @@ function minPerCall(role) {
 
 /* ---------- Gestion des listes SDR / Closer (entrants/sortants) ---------- */
 const ROLE_LISTS = {
-  sdr:    { key: 'clientx_sdr_list',    defaults: ['Maha', 'Mohamed', 'Princy'] },
+  sdr:    { key: 'clientx_sdr_list',    defaults: ['Mohamed', 'Princy'] },
   closer: { key: 'clientx_closer_list', defaults: ['Hassan', 'Taha', 'Maha'] }
 };
 
@@ -566,6 +584,13 @@ function getList(role) {
       if (Array.isArray(list) && list.length) {
         // Migration : ancien format = tableau de noms simples -> objets {name, startDate}
         list = list.map(item => typeof item === 'string' ? { name: item, startDate: null } : item);
+        // Nettoyage ponctuel : Maha est désormais Closer uniquement, plus SDR.
+        // Corrige aussi les listes déjà enregistrées sur les anciens appareils.
+        if (role === 'sdr') {
+          const before = list.length;
+          list = list.filter(p => p.name !== 'Maha');
+          if (list.length !== before) saveList(role, list);
+        }
         return list;
       }
     }
@@ -678,6 +703,7 @@ function renderEntryPersonOptions() {
   document.getElementById('sales-field').style.display = t.salesMonth ? 'block' : 'none';
   document.getElementById('rdvs-faits-field').style.display = t.hasRdvFaits ? 'block' : 'none';
   document.getElementById('rdvs-presentes-field').style.display = t.hasRdvPresentes ? 'block' : 'none';
+  document.getElementById('leads-field').style.display = t.hasLeads ? 'block' : 'none';
 
   nameSelect.innerHTML = '<option value="">Sélectionner</option>' +
     list.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
@@ -842,6 +868,11 @@ function buildAnalysis(totals, days, label, periodType, t) {
   if (t.hasRdvFaits && totals.rdvsFaits === 0 && totals.rdvsPris > 0) points.push(`Aucun RDV faits sur la période malgré ${totals.rdvsPris} RDV pris — signal d'alerte sur le taux de présence.`);
   if (t.hasRdvPresentes && totals.rdvsPresentes === 0 && totals.rdvsPris > 0) points.push(`Aucun RDV présenté sur la période malgré ${totals.rdvsPris} RDV pris — signal d'alerte sur le taux de présence/qualification.`);
   if (periodType === 'month' && salesPct !== null && salesPct < 95) points.push(`Ventes à ${salesPct}% de l'objectif mensuel (${totals.sales}/${targetSales.toFixed(1)}, réf. ${t.salesMonth}/mois) — écart à clarifier sur l'étape RDV→closing.`);
+  if (t.hasLeads) {
+    const leadsToRdvPct = totals.leads > 0 ? Math.round((totals.rdvsFaits / totals.leads) * 100) : 0;
+    const leadsToSalesPct = totals.leads > 0 ? Math.round((totals.sales / totals.leads) * 100) : 0;
+    points.push(`Conversion des leads reçus (${totals.leads}) : ${leadsToRdvPct}% transformés en RDV faits, ${leadsToSalesPct}% transformés en ventes signées.`);
+  }
   if (points.length === 0) points.push(`Objectifs atteints sur ${label}. Maintenir la cadence et surveiller le taux de conversion en RDV${t.salesMonth ? ' et en ventes' : ''}.`);
 
   return {
@@ -964,8 +995,9 @@ async function loadReport() {
       acc.rdvsPresentes += Number(r.rdvs_presentes) || 0;
       acc.meetings += Number(r.meetings) || 0;
       acc.sales += Number(r.sales) || 0;
+      acc.leads += Number(r.leads) || 0;
       return acc;
-    }, { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, meetings: 0, sales: 0 });
+    }, { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, meetings: 0, sales: 0, leads: 0 });
 
     const uniqueDays = new Set(rows.map(r => r.date)).size;
     const presetValue = document.getElementById('report-preset').value;
@@ -1009,18 +1041,34 @@ async function loadReport() {
         <p class="metric-value">${totals.sales}<span style="font-size:13px;color:var(--text-secondary);"> / ${analysis.targetSales.toFixed(1)}</span></p>
         <p class="metric-pct">${badgeHtml(analysis.salesPct)}</p>
       </div>` : ''}
+      ${t.hasLeads ? `
+      <div class="metric">
+        <p class="metric-label">Total leads reçus</p>
+        <p class="metric-value">${totals.leads}</p>
+      </div>
+      <div class="metric">
+        <p class="metric-label">Leads → RDV faits</p>
+        <p class="metric-value">${totals.rdvsFaits}<span style="font-size:13px;color:var(--text-secondary);"> / ${totals.leads}</span></p>
+        <p class="metric-pct">${totals.leads > 0 ? Math.round((totals.rdvsFaits / totals.leads) * 100) : 0}% des leads reçus</p>
+      </div>
+      <div class="metric">
+        <p class="metric-label">Leads → Ventes</p>
+        <p class="metric-value">${totals.sales}<span style="font-size:13px;color:var(--text-secondary);"> / ${totals.leads}</span></p>
+        <p class="metric-pct">${totals.leads > 0 ? Math.round((totals.sales / totals.leads) * 100) : 0}% des leads reçus</p>
+      </div>` : ''}
     `;
 
     analysisEl.innerHTML = analysis.html;
 
     const byDate = {};
     rows.forEach(r => {
-      if (!byDate[r.date]) byDate[r.date] = { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, sales: 0 };
+      if (!byDate[r.date]) byDate[r.date] = { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, sales: 0, leads: 0 };
       byDate[r.date].calls += Number(r.calls) || 0;
       byDate[r.date].rdvsPris += Number(r.rdvs_pris) || 0;
       byDate[r.date].rdvsFaits += Number(r.rdvs) || 0;
       byDate[r.date].rdvsPresentes += Number(r.rdvs_presentes) || 0;
       byDate[r.date].sales += Number(r.sales) || 0;
+      byDate[r.date].leads += Number(r.leads) || 0;
     });
     const sortedDates = Object.keys(byDate).sort();
 
@@ -1030,6 +1078,7 @@ async function loadReport() {
     ];
     if (t.hasRdvFaits) datasets.push({ label: 'RDV faits', data: sortedDates.map(d => byDate[d].rdvsFaits), borderColor: '#d8504a', backgroundColor: 'rgba(216,80,74,0.1)', tension: 0.3 });
     if (t.hasRdvPresentes) datasets.push({ label: 'RDV présentés', data: sortedDates.map(d => byDate[d].rdvsPresentes), borderColor: '#e0a458', backgroundColor: 'rgba(224,164,88,0.1)', tension: 0.3 });
+    if (t.hasLeads) datasets.push({ label: 'Leads reçus', data: sortedDates.map(d => byDate[d].leads), borderColor: '#8a5cf6', backgroundColor: 'rgba(138,92,246,0.1)', tension: 0.3 });
     if (t.salesMonth) datasets.push({ label: 'Ventes', data: sortedDates.map(d => byDate[d].sales), borderColor: '#0f6e56', backgroundColor: 'rgba(15,110,86,0.1)', tension: 0.3, borderWidth: 3 });
 
     const ctx = document.getElementById('report-chart').getContext('2d');
@@ -1053,6 +1102,7 @@ async function loadReport() {
         <td>${r.rdvs || 0}</td>
         <td>${r.rdvs_presentes || 0}</td>
         <td>${r.meetings || 0}</td>
+        ${t.hasLeads ? `<td>${r.leads || 0}</td>` : ''}
         <td>${r.sales}</td>
       </tr>
     `).join('');
@@ -1060,7 +1110,7 @@ async function loadReport() {
     wrap.innerHTML = `
       <table>
         <thead>
-          <tr><th>Date</th><th>Nom</th><th>Appels</th><th>RDV pris</th><th>RDV faits</th><th>RDV présentés</th><th>Réunions</th><th>Ventes</th></tr>
+          <tr><th>Date</th><th>Nom</th><th>Appels</th><th>RDV pris</th><th>RDV faits</th><th>RDV présentés</th><th>Réunions</th>${t.hasLeads ? '<th>Leads</th>' : ''}<th>Ventes</th></tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
       </table>
@@ -1086,6 +1136,7 @@ function calc() {
   const rdvsPresentes = t.hasRdvPresentes ? (Number(document.getElementById('rdvs-presentes').value) || 0) : 0;
   const meetings = Number(document.getElementById('meetings').value) || 0;
   const sales = t.salesMonth ? (Number(document.getElementById('sales').value) || 0) : 0;
+  const leads = t.hasLeads ? (Number(document.getElementById('leads').value) || 0) : 0;
   const name = document.getElementById('sdr-name').value || '—';
   const date = document.getElementById('sdr-date').value || '—';
 
@@ -1140,6 +1191,10 @@ function calc() {
     secondaryLine = `${secondaryLabel}: ${secondaryValue}`;
   }
 
+  // Conversion leads → RDV faits / leads → ventes (Closer uniquement)
+  const leadsToRdvPct = leads > 0 ? Math.round((rdvsFaits / leads) * 100) : 0;
+  const leadsToSalesPct = leads > 0 ? Math.round((sales / leads) * 100) : 0;
+
   document.getElementById('metrics').innerHTML = `
     <div class="metric">
       <p class="metric-label">Appels / objectif ajusté</p>
@@ -1148,6 +1203,11 @@ function calc() {
     </div>
     ${rdvsPrisBox}
     ${secondaryBox}
+    ${t.hasLeads ? `
+    <div class="metric">
+      <p class="metric-label">Leads reçus</p>
+      <p class="metric-value">${leads}</p>
+    </div>` : ''}
     <div class="metric">
       <p class="metric-label">Réunions équipe</p>
       <p class="metric-value">${meetings}</p>
@@ -1157,6 +1217,17 @@ function calc() {
       <p class="metric-label">Ventes signées</p>
       <p class="metric-value">${sales}</p>
     </div>` : ''}
+    ${t.hasLeads ? `
+    <div class="metric">
+      <p class="metric-label">Leads → RDV faits</p>
+      <p class="metric-value">${rdvsFaits}<span style="font-size:13px;color:var(--text-secondary);"> / ${leads}</span></p>
+      <p class="metric-pct">${leadsToRdvPct}% des leads reçus</p>
+    </div>
+    <div class="metric">
+      <p class="metric-label">Leads → Ventes</p>
+      <p class="metric-value">${sales}<span style="font-size:13px;color:var(--text-secondary);"> / ${leads}</span></p>
+      <p class="metric-pct">${leadsToSalesPct}% des leads reçus</p>
+    </div>` : ''}
   `;
 
   document.getElementById('summary-text').textContent =
@@ -1165,13 +1236,16 @@ Appels: ${calls}/${dynamicCallTarget} (${callsPct}%) — objectif ajusté selon 
 ${rdvsPrisLine}
 ${secondaryLine}
 Réunions équipe: ${meetings}${t.salesMonth ? `
-Ventes signées: ${sales}` : ''}`;
+Ventes signées: ${sales}` : ''}${t.hasLeads ? `
+Leads reçus: ${leads}
+Leads → RDV faits: ${rdvsFaits}/${leads} (${leadsToRdvPct}%)
+Leads → Ventes: ${sales}/${leads} (${leadsToSalesPct}%)` : ''}`;
 }
 
 async function loadMonthCumul() {
   const container = document.getElementById('month-cumul-box');
   const role = currentEntryRole();
-  const t = TARGETS[role];
+  const t = Object.assign({ key: role }, TARGETS[role]);
   const name = document.getElementById('sdr-name').value;
 
   if (!name) { container.innerHTML = ''; return; }
@@ -1205,8 +1279,9 @@ async function loadMonthCumul() {
       acc.rdvsPresentes += Number(r.rdvs_presentes) || 0;
       acc.meetings += Number(r.meetings) || 0;
       acc.sales += Number(r.sales) || 0;
+      acc.leads += Number(r.leads) || 0;
       return acc;
-    }, { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, meetings: 0, sales: 0 });
+    }, { calls: 0, rdvsPris: 0, rdvsFaits: 0, rdvsPresentes: 0, meetings: 0, sales: 0, leads: 0 });
 
     const person = findPerson(role, name);
     const targetDays = effectiveDaysForPerson(person ? person.startDate : null, start, end);
@@ -1214,11 +1289,13 @@ async function loadMonthCumul() {
 
     const secondaryLabel = t.hasRdvFaits ? 'RDV faits' : 'RDV présentés';
     const secondaryValue = t.hasRdvFaits ? totals.rdvsFaits : totals.rdvsPresentes;
+    const leadsToRdvPct = totals.leads > 0 ? Math.round((totals.rdvsFaits / totals.leads) * 100) : 0;
+    const leadsToSalesPct = totals.leads > 0 ? Math.round((totals.sales / totals.leads) * 100) : 0;
 
     container.innerHTML = `
       <p style="font-size:13px;font-weight:600;margin:0 0 8px;">Cumul du mois — ${name}</p>
       <p style="font-size:13px;margin:0 0 10px;color:var(--text-secondary);">
-        Appels : ${totals.calls} · RDV pris : ${totals.rdvsPris} · ${secondaryLabel} : ${secondaryValue}${t.salesMonth ? ` · Ventes : ${totals.sales}/${t.salesMonth}` : ''}
+        Appels : ${totals.calls} · RDV pris : ${totals.rdvsPris} · ${secondaryLabel} : ${secondaryValue}${t.salesMonth ? ` · Ventes : ${totals.sales}/${t.salesMonth}` : ''}${t.hasLeads ? ` · Leads : ${totals.leads} (→RDV ${leadsToRdvPct}%, →Ventes ${leadsToSalesPct}%)` : ''}
       </p>
       ${analysis.html}
     `;
@@ -1228,7 +1305,7 @@ async function loadMonthCumul() {
   }
 }
 
-['sdr-name','sdr-date','calls','rdvs-pris','rdvs-faits','rdvs-presentes','meetings','sales'].forEach(id => {
+['sdr-name','sdr-date','calls','rdvs-pris','rdvs-faits','rdvs-presentes','meetings','sales','leads'].forEach(id => {
   document.getElementById(id).addEventListener('input', calc);
 });
 document.getElementById('sdr-name').addEventListener('change', loadMonthCumul);
@@ -1270,7 +1347,8 @@ document.getElementById('submit-btn').addEventListener('click', async () => {
     rdvs: TARGETS[role].hasRdvFaits ? (Number(document.getElementById('rdvs-faits').value) || 0) : 0,
     rdvs_presentes: TARGETS[role].hasRdvPresentes ? (Number(document.getElementById('rdvs-presentes').value) || 0) : 0,
     meetings: Number(document.getElementById('meetings').value) || 0,
-    sales: TARGETS[role].salesMonth ? (Number(document.getElementById('sales').value) || 0) : 0
+    sales: TARGETS[role].salesMonth ? (Number(document.getElementById('sales').value) || 0) : 0,
+    leads: TARGETS[role].hasLeads ? (Number(document.getElementById('leads').value) || 0) : 0
   };
 
   const btn = document.getElementById('submit-btn');
